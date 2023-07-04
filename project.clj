@@ -1,4 +1,4 @@
-(defproject io.logicblocks/liberator.resource.events "0.1.0-RC0"
+(defproject io.logicblocks/liberator.resource.events "0.1.0-RC1"
   :description "Event related resources for liberator."
   :url "https://github.com/logicblocks/liberator.resource.events"
 
