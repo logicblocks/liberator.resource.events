@@ -7,6 +7,23 @@
     [liberator.mixin.hypermedia.core :as hypermedia-mixin]
     [liberator.mixin.hal.core :as hal-mixin]))
 
+(defprotocol EventLoader
+  (query [loader context])
+  (before? [loader context])
+  (after? [loader context]))
+
+(defrecord FnBackedEventLoader [fns]
+  EventLoader
+  (query [_ context]
+    ((:query fns) context))
+  (before? [_ context]
+    ((get fns :before? (constantly true)) context))
+  (after? [_ context]
+    ((get fns :after? (constantly true)) context)))
+
+(defn ->event-loader [fns]
+  (->FnBackedEventLoader fns))
+
 (defn default-event-link-fn [{:keys [request router]} event]
   {:href
    (hype/absolute-url-for request router :event
@@ -16,15 +33,10 @@
   {:href
    (hype/absolute-url-for request router :events)})
 
-(defn default-event-loader [_] [])
+(defn default-event-loader [_]
+  (->event-loader {:query (fn [_] [])}))
 
 (def default-events-to-pick 10)
-
-(defn default-events-before-check [_ _]
-  true)
-
-(defn default-events-after-check [_ _]
-  true)
 
 (defn default-event-transformer
   [{:keys [resource] :as context} event]
@@ -52,8 +64,6 @@
    {:event-loader              default-event-loader
     :event-transformer         default-event-transformer
     :events-to-pick-by-default default-events-to-pick
-    :events-after?             default-events-after-check
-    :events-before?            default-events-before-check
 
     :event-link                default-event-link-fn
     :events-link               default-events-link-fn
@@ -66,7 +76,7 @@
     :handle-ok
     (fn [{:keys [resource] :as context}]
       (let [event-loader (:event-loader resource)
-            events (event-loader context)
+            events (query (event-loader) context)
 
             event-transformer (:event-transformer resource)
 

@@ -25,6 +25,8 @@
   {:shared
    {:dependencies [[org.clojure/clojure "1.11.1"]
 
+                   [hashp "0.2.2"]
+
                    [ring/ring-core "1.10.0"]
                    [ring/ring-mock "0.4.0"]
 
@@ -34,7 +36,8 @@
 
                    [nrepl "1.0.0"]
                    [eftest "0.6.0"]
-                   [faker "0.3.2"]]}
+                   [faker "0.3.2"]]
+    :injections [(require 'hashp.core)]}
 
    :dev
    [:shared {:source-paths ["dev"]
