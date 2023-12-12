@@ -7,7 +7,7 @@
 
   :dependencies [[io.logicblocks/halboy "6.0.0"]
                  [io.logicblocks/hype "2.0.0"]
-                 [io.logicblocks/liberator.mixin "0.1.0-RC3"]]
+                 [io.logicblocks/liberator.mixin "0.1.0-RC5"]]
 
   :plugins [[lein-cloverage "1.2.4"]
             [lein-shell "0.5.0"]
@@ -23,6 +23,7 @@
 
   :profiles
   {:shared
+   ^{:pom-scope :test}
    {:dependencies [[org.clojure/clojure "1.11.1"]
 
                    [hashp "0.2.2"]
@@ -30,11 +31,11 @@
                    [ring/ring-core "1.10.0"]
                    [ring/ring-mock "0.4.0"]
 
-                   [tick "0.6.2"]
+                   [tick "0.7.5"]
 
-                   [ai.mypulse/placid-fish "0.1.4"]
+                   [ai.mypulse/placid-fish "2.1.6"]
 
-                   [nrepl "1.0.0"]
+                   [nrepl "1.1.0"]
                    [eftest "0.6.0"]
                    [faker "0.3.2"]]
     :injections [(require 'hashp.core)]}

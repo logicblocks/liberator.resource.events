@@ -1,20 +1,20 @@
 (ns liberator.resource.events.core-less-than-one-page-test
   (:require
-    [clojure.test :refer [deftest is]]
-    [clojure.set :as set]
+   [clojure.test :refer [deftest is]]
+   [clojure.set :as set]
 
-    [halboy.resource :as hal]
-    [halboy.json :as hal-json]
+   [halboy.resource :as hal]
+   [halboy.json :as hal-json]
 
-    [hype.core :as hype]
+   [hype.core :as hype]
 
-    [ring.mock.request :as ring]
-    [ring.middleware.keyword-params :as ring-keyword-params]
-    [ring.middleware.params :as ring-params]
+   [ring.mock.request :as ring]
+   [ring.middleware.keyword-params :as ring-keyword-params]
+   [ring.middleware.params :as ring-params]
 
-    [liberator.resource.events.core :as events-resource]
+   [liberator.resource.events.core :as events-resource]
 
-    [liberator.resource.events.test-support.data :as data]))
+   [liberator.resource.events.test-support.data :as data]))
 
 (def router
   [""

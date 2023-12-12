@@ -1,7 +1,7 @@
 (ns liberator.resource.events.test-support.data
   (:require
-    [tick.core :as time]
-    [faker.lorem :as lorem]))
+   [tick.core :as time]
+   [faker.lorem :as lorem]))
 
 (defn random-uuid-string []
   (str (random-uuid)))

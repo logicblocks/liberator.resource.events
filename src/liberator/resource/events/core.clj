@@ -1,11 +1,11 @@
 (ns liberator.resource.events.core
   (:require
-    [halboy.resource :as hal]
-    [hype.core :as hype]
-    [liberator.mixin.core :as mixin]
-    [liberator.mixin.json.core :as json-mixin]
-    [liberator.mixin.hypermedia.core :as hypermedia-mixin]
-    [liberator.mixin.hal.core :as hal-mixin]))
+   [halboy.resource :as hal]
+   [hype.core :as hype]
+   [liberator.mixin.core :as mixin]
+   [liberator.mixin.json.core :as json-mixin]
+   [liberator.mixin.hypermedia.core :as hypermedia-mixin]
+   [liberator.mixin.hal.core :as hal-mixin]))
 
 (defprotocol EventLoader
   (query [loader context])
