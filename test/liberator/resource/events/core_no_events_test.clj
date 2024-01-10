@@ -1,26 +1,13 @@
 (ns liberator.resource.events.core-no-events-test
   (:require
-   [clojure.test :refer [deftest is]]
-
-   [halboy.resource :as hal]
-   [halboy.json :as hal-json]
-
    [hype.core :as hype]
 
-   [ring.mock.request :as ring]
-   [ring.middleware.keyword-params :as ring-keyword-params]
-   [ring.middleware.params :as ring-params]
+   [eftest.runner :refer [find-tests run-tests]]
+   [eftest.report.pretty :refer [report]]
 
-   [liberator.resource.events.core :as events-resource]))
+   [liberator.resource.events.core :as events-resource]
 
-(def router
-  [""
-   [["/" :discovery]
-    ["/events" :events]
-    [["/events/" :event-id] :event]]])
-
-(def dependencies
-  {:router router})
+   [liberator.resource.events.test-support.behaviours :as behaviours]))
 
 (defn no-events-loader []
   (events-resource/->event-loader
@@ -28,104 +15,67 @@
      :before? (constantly false)
      :after?  (constantly false)}))
 
-(defn resource-handler
-  ([dependencies] (resource-handler dependencies {}))
-  ([dependencies overrides]
-   (let [handler (events-resource/handler dependencies overrides)
-         handler (-> handler
-                   ring-keyword-params/wrap-keyword-params
-                   ring-params/wrap-params)]
-     handler)))
+(let [base-url "https://example.com"
+      event-loader (no-events-loader)
+      resource-definition {:event-loader event-loader}
+      options {:base-url            base-url
+               :resource-definition resource-definition}]
+  (behaviours/responds-with-status 200 options)
+  (behaviours/includes-link-on-resource :discovery
+    "https://example.com/"
+    options)
+  (behaviours/does-not-include-link-on-resource :next options)
+  (behaviours/does-not-include-link-on-resource :previous options)
+  (behaviours/includes-embedded-resources-on-resource :events 0 options))
 
-(deftest responds-with-status-200
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)]
-    (is (= 200 (:status result)))))
+(behaviours/when no-events-link-fn-provided
+  (let [base-url "https://example.com"
+        event-loader (no-events-loader)
+        resource-definition {:event-loader event-loader}
+        options {:base-url            base-url
+                 :resource-definition resource-definition}]
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/events"
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events"
+      options)))
 
-(deftest includes-self-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/events"
-          (hal/get-href resource :self)))))
-
-(deftest includes-discovery-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/"
-          (hal/get-href resource :discovery)))))
-
-(deftest includes-first-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/events"
-          (hal/get-href resource :first)))))
-
-(deftest does-not-include-next-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (nil? (hal/get-href resource :next)))))
-
-(deftest does-not-include-previous-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (nil? (hal/get-href resource :previous)))))
-
-(deftest embeds-empty-events-resource-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= [] (hal/get-resource resource :events)))))
-(deftest uses-events-link-function-for-resource-self-link-when-provided
-  (let [router [""
+(behaviours/when events-link-fn-provided
+  (let [base-url "https://example.com/api"
+        router [""
                 [["/api"
                   [["" :discovery]
                    ["/events" :api-events]
                    [["/events/" :event-id] :event]]]]]
-        dependencies {:router router}
-        handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)
-                   :events-link
-                   (fn [{:keys [request router]}]
-                     (hype/absolute-url-for request router :api-events))})
-        request (ring/request :get "https://example.com/api/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/api/events"
-          (hal/get-href resource :self)))))
+        event-loader (no-events-loader)
+        events-link-fn
+        (fn [{:keys [request router]} params]
+          (hype/absolute-url-for request router :api-events params))
 
-(deftest uses-events-link-function-for-resource-first-link-when-provided
-  (let [router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :event-id] :event]]]]]
-        dependencies {:router router}
-        handler (resource-handler dependencies
-                  {:event-loader (no-events-loader)
-                   :events-link
-                   (fn [{:keys [request router]}]
-                     (hype/absolute-url-for request router :api-events))})
-        request (ring/request :get "https://example.com/api/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/api/events"
-          (hal/get-href resource :first)))))
+        resource-definition
+        {:event-loader event-loader
+         :events-link  events-link-fn}
+
+        options
+        {:base-url            base-url
+         :router              router
+         :resource-definition resource-definition}]
+
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/api/events"
+      options)
+
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/api/events"
+      options)))
+
+(comment
+  (find-tests *ns*)
+
+  (run-tests
+    [(ns-resolve *ns* 'does-not-include-next-link-on-resource)])
+
+  (run-tests
+    (find-tests *ns*)
+    {:report report}))

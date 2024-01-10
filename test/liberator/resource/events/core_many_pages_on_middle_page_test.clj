@@ -1,4 +1,4 @@
-(ns liberator.resource.events.core-exactly-one-page-test
+(ns liberator.resource.events.core-many-pages-on-middle-page-test
   (:require
    [halboy.resource :as hal]
 
@@ -12,18 +12,17 @@
    [liberator.resource.events.test-support.data :as data]
    [liberator.resource.events.test-support.behaviours :as behaviours]))
 
-(defn exactly-one-page-of-events-loader
-  ([] (exactly-one-page-of-events-loader
+(defn many-pages-of-events-on-middle-page []
+  (let [events
         (take events-resource/default-events-to-pick
-          (repeatedly data/random-event))))
-  ([events]
-   (events-resource/->event-loader
-     {:query   (constantly events)
-      :before? (constantly false)
-      :after?  (constantly false)})))
+          (repeatedly data/random-event))]
+    (events-resource/->event-loader
+      {:query   (constantly events)
+       :before? (constantly true)
+       :after?  (constantly true)})))
 
 (let [base-url "https://example.com"
-      event-loader (exactly-one-page-of-events-loader)
+      event-loader (many-pages-of-events-on-middle-page)
       resource-definition {:event-loader event-loader}
       options {:base-url            base-url
                :resource-definition resource-definition}]
@@ -31,13 +30,16 @@
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
     options)
-  (behaviours/does-not-include-link-on-resource :next options)
-  (behaviours/does-not-include-link-on-resource :previous options)
   (behaviours/includes-embedded-resources-on-resource :events 10 options))
 
 (behaviours/when no-events-link-fn-provided
   (let [base-url "https://example.com"
-        event-loader (exactly-one-page-of-events-loader)
+        event-loader (many-pages-of-events-on-middle-page)
+        events (events-resource/query event-loader {})
+        first-event (first events)
+        first-event-id (:id first-event)
+        last-event (last events)
+        last-event-id (:id last-event)
         resource-definition {:event-loader event-loader}
         options {:base-url            base-url
                  :resource-definition resource-definition}]
@@ -46,6 +48,12 @@
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/events"
+      options)
+    (behaviours/includes-link-on-resource :next
+      (str "https://example.com/events?since=" last-event-id)
+      options)
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when events-link-fn-provided
@@ -55,7 +63,14 @@
                   [["" :discovery]
                    ["/events" :api-events]
                    [["/events/" :event-id] :event]]]]]
-        event-loader (exactly-one-page-of-events-loader)
+
+        event-loader (many-pages-of-events-on-middle-page)
+        events (events-resource/query event-loader {})
+        first-event (first events)
+        first-event-id (:id first-event)
+        last-event (last events)
+        last-event-id (:id last-event)
+
         events-link-fn
         (fn [{:keys [request router]} params]
           (hype/absolute-url-for request router :api-events params))
@@ -75,11 +90,19 @@
 
     (behaviours/includes-link-on-resource :first
       "https://example.com/api/events"
+      options)
+
+    (behaviours/includes-link-on-resource :next
+      (str "https://example.com/api/events?since=" last-event-id)
+      options)
+
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/api/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when no-event-link-fn-provided
   (let [base-url "https://example.com"
-        event-loader (exactly-one-page-of-events-loader)
+        event-loader (many-pages-of-events-on-middle-page)
         events (events-resource/query event-loader {})
         hrefs (map #(str "https://example.com/events/" (:id %)) events)
         resource-definition {:event-loader event-loader}
@@ -96,7 +119,7 @@
                   [["" :discovery]
                    ["/events" :api-events]
                    [["/events/" :api-event-id] :api-event]]]]]
-        event-loader (exactly-one-page-of-events-loader)
+        event-loader (many-pages-of-events-on-middle-page)
         events (events-resource/query event-loader {})
         hrefs (map #(str "https://example.com/api/events/" (:id %)) events)
 
@@ -120,7 +143,7 @@
 
 (behaviours/when no-event-transformer-fn-provided
   (let [base-url "https://example.com"
-        event-loader (exactly-one-page-of-events-loader)
+        event-loader (many-pages-of-events-on-middle-page)
         events (events-resource/query event-loader {})
         event-properties
         (map (fn [event]
@@ -145,7 +168,7 @@
 
 (behaviours/when event-transformer-fn-provided
   (let [base-url "https://example.com"
-        event-loader (exactly-one-page-of-events-loader)
+        event-loader (many-pages-of-events-on-middle-page)
         events (events-resource/query event-loader {})
         event-properties
         (map (fn [event]

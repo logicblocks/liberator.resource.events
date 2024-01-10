@@ -24,14 +24,15 @@
 (defn ->event-loader [fns]
   (->FnBackedEventLoader fns))
 
-(defn default-event-link-fn [{:keys [request router]} event]
+(defn default-event-link-fn [{:keys [request router]} event params]
   {:href
    (hype/absolute-url-for request router :event
-     {:path-params {:event-id (:id event)}})})
+     (merge params
+       {:path-params {:event-id (:id event)}}))})
 
-(defn default-events-link-fn [{:keys [request router]}]
+(defn default-events-link-fn [{:keys [request router]} params]
   {:href
-   (hype/absolute-url-for request router :events)})
+   (hype/absolute-url-for request router :events params)})
 
 (defn default-event-loader [_]
   (->event-loader {:query (fn [_] [])}))
@@ -41,7 +42,7 @@
 (defn default-event-transformer
   [{:keys [resource] :as context} event]
   (let [event-link-fn (:event-link resource)
-        event-link (event-link-fn context event)
+        event-link (event-link-fn context event {})
         resource (hal/new-resource event-link)
         resource (hal/add-properties resource
                    (select-keys event
@@ -54,10 +55,31 @@
                       :occurred-at]))]
     resource))
 
+(defn- self-link [{:keys [resource] :as context}]
+  (let [events-link-fn (:events-link resource)
+        self-link (events-link-fn context {})]
+    self-link))
+
 (defn- first-link [{:keys [resource] :as context}]
   (let [events-link-fn (:events-link resource)
-        first-link (events-link-fn context)]
-    first-link))
+        events-link (events-link-fn context {})]
+    events-link))
+
+(defn- next-link [{:keys [resource] :as context} events]
+  (let [last-event (last events)
+        last-event-id (:id last-event)
+        events-link-fn (:events-link resource)
+        events-link (events-link-fn context
+                      {:query-params {:since last-event-id}})]
+    events-link))
+
+(defn- previous-link [{:keys [resource] :as context} events]
+  (let [first-event (first events)
+        first-event-id (:id first-event)
+        events-link-fn (:events-link resource)
+        events-link (events-link-fn context
+                      {:query-params {:preceding first-event-id}})]
+    events-link))
 
 (defn definitions
   ([_]
@@ -70,24 +92,36 @@
 
     :self-link                 (fn [{:keys [resource] :as context}]
                                  (let [events-link-fn (:events-link resource)
-                                       events-link (events-link-fn context)]
+                                       events-link (events-link-fn context {})]
                                    events-link))
 
     :handle-ok
     (fn [{:keys [resource] :as context}]
-      (let [event-loader (:event-loader resource)
-            events (query (event-loader) context)
+      (let [event-loader-fn (:event-loader resource)
+            event-loader (event-loader-fn)
+            event-transformer-fn (:event-transformer resource)
+            event-transformer (partial event-transformer-fn context)
 
-            event-transformer (:event-transformer resource)
+            events (query event-loader context)
+            before? (before? event-loader context)
+            after? (after? event-loader context)
 
-            self-link-fn (:self-link resource)
-            self-link (self-link-fn context)
-
-            event-resources
-            (mapv (partial event-transformer context) events)]
-        (-> (hal/new-resource self-link)
-          (hal/add-href :first (first-link context))
-          (hal/add-resource :events event-resources))))}))
+            event-resources (mapv event-transformer events)
+            events-resource
+            (-> (hal/new-resource (self-link context))
+              (hal/add-href :first (first-link context))
+              (hal/add-resource :events event-resources))
+            events-resource
+            (if after?
+              (hal/add-href events-resource
+                :next (next-link context events))
+              events-resource)
+            events-resource
+            (if before?
+              (hal/add-href events-resource
+                :previous (previous-link context events))
+              events-resource)]
+        events-resource))}))
 
 (defn handler
   ([dependencies]

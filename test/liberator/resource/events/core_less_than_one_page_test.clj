@@ -1,29 +1,16 @@
 (ns liberator.resource.events.core-less-than-one-page-test
   (:require
-   [clojure.test :refer [deftest is]]
-   [clojure.set :as set]
-
    [halboy.resource :as hal]
-   [halboy.json :as hal-json]
 
    [hype.core :as hype]
 
-   [ring.mock.request :as ring]
-   [ring.middleware.keyword-params :as ring-keyword-params]
-   [ring.middleware.params :as ring-params]
+   [eftest.runner :refer [find-tests run-tests]]
+   [eftest.report.pretty :refer [report]]
 
    [liberator.resource.events.core :as events-resource]
 
-   [liberator.resource.events.test-support.data :as data]))
-
-(def router
-  [""
-   [["/" :discovery]
-    ["/events" :events]
-    [["/events/" :event-id] :event]]])
-
-(def dependencies
-  {:router router})
+   [liberator.resource.events.test-support.data :as data]
+   [liberator.resource.events.test-support.behaviours :as behaviours]))
 
 (defn less-than-one-page-of-events-loader
   ([] (less-than-one-page-of-events-loader
@@ -34,195 +21,173 @@
       :before? (constantly false)
       :after?  (constantly false)})))
 
-(take 5 (repeatedly data/random-event))
+(let [base-url "https://example.com"
+      event-loader (less-than-one-page-of-events-loader)
+      resource-definition {:event-loader event-loader}
+      options {:base-url            base-url
+               :resource-definition resource-definition}]
+  (behaviours/responds-with-status 200 options)
+  (behaviours/includes-link-on-resource :discovery
+    "https://example.com/"
+    options)
+  (behaviours/does-not-include-link-on-resource :next options)
+  (behaviours/does-not-include-link-on-resource :previous options)
+  (behaviours/includes-embedded-resources-on-resource :events 5 options))
 
-(defn resource-handler
-  ([dependencies] (resource-handler dependencies {}))
-  ([dependencies overrides]
-   (let [handler (events-resource/handler dependencies overrides)
-         handler (-> handler
-                   ring-keyword-params/wrap-keyword-params
-                   ring-params/wrap-params)]
-     handler)))
+(behaviours/when no-events-link-fn-provided
+  (let [base-url "https://example.com"
+        event-loader (less-than-one-page-of-events-loader)
+        resource-definition {:event-loader event-loader}
+        options {:base-url            base-url
+                 :resource-definition resource-definition}]
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/events"
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events"
+      options)))
 
-(deftest responds-with-status-200
-  (let [handler (resource-handler dependencies
-                  {:event-loader (less-than-one-page-of-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)]
-    (is (= 200 (:status result)))))
+(behaviours/when events-link-fn-provided
+  (let [base-url "https://example.com/api"
+        router [""
+                [["/api"
+                  [["" :discovery]
+                   ["/events" :api-events]
+                   [["/events/" :event-id] :event]]]]]
+        event-loader (less-than-one-page-of-events-loader)
+        events-link-fn
+        (fn [{:keys [request router]} params]
+          (hype/absolute-url-for request router :api-events params))
 
-(deftest includes-self-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (less-than-one-page-of-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/events"
-          (hal/get-href resource :self)))))
+        resource-definition
+        {:event-loader event-loader
+         :events-link  events-link-fn}
 
-(deftest includes-discovery-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (less-than-one-page-of-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/"
-          (hal/get-href resource :discovery)))))
+        options
+        {:base-url            base-url
+         :router              router
+         :resource-definition resource-definition}]
 
-(deftest includes-first-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (less-than-one-page-of-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/events"
-          (hal/get-href resource :first)))))
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/api/events"
+      options)
 
-(deftest does-not-include-next-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (less-than-one-page-of-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (nil? (hal/get-href resource :next)))))
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/api/events"
+      options)))
 
-(deftest does-not-include-previous-link-on-resource
-  (let [handler (resource-handler dependencies
-                  {:event-loader (less-than-one-page-of-events-loader)})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (nil? (hal/get-href resource :previous)))))
-
-(deftest includes-self-link-on-embedded-events
-  (let [event-loader (less-than-one-page-of-events-loader)
+(behaviours/when no-event-link-fn-provided
+  (let [base-url "https://example.com"
+        event-loader (less-than-one-page-of-events-loader)
         events (events-resource/query event-loader {})
-        handler (resource-handler dependencies
-                  {:event-loader event-loader})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))
-        event-resources (hal/get-resource resource :events)]
-    (is (=
-          (map (fn [event] (str "https://example.com/events/" (:id event)))
-            events)
-          (map (fn [event-resource] (hal/get-href event-resource :self))
-            event-resources)))))
+        hrefs (map #(str "https://example.com/events/" (:id %)) events)
+        resource-definition {:event-loader event-loader}
+        options {:base-url            base-url
+                 :resource-definition resource-definition}]
+    (behaviours/includes-links-on-embedded-resources :events :self
+      hrefs
+      options)))
 
-(deftest includes-all-props-but-payload-on-embedded-events
-  (let [event-loader (less-than-one-page-of-events-loader)
+(behaviours/when event-link-fn-provided
+  (let [base-url "https://example.com/api"
+        router [""
+                [["/api"
+                  [["" :discovery]
+                   ["/events" :api-events]
+                   [["/events/" :api-event-id] :api-event]]]]]
+        event-loader (less-than-one-page-of-events-loader)
         events (events-resource/query event-loader {})
-        handler (resource-handler dependencies
-                  {:event-loader event-loader})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))
-        event-resources (hal/get-resource resource :events)]
-    (is (=
-          (map (fn [event]
-                 (-> event
-                   (dissoc :payload)
-                   (update :type name)
-                   (update :category name)
-                   (update :creator name)
-                   (update :observed-at str)
-                   (update :occurred-at str)
-                   (set/rename-keys
-                     {:observed-at :observedAt
-                      :occurred-at :occurredAt})))
-            events)
-          (map hal/properties event-resources)))))
+        hrefs (map #(str "https://example.com/api/events/" (:id %)) events)
 
-(deftest uses-event-transformer-to-build-embedded-event-when-provided
-  (let [event-loader (less-than-one-page-of-events-loader)
+        event-link-fn
+        (fn [{:keys [request router]} event params]
+          (hype/absolute-url-for request router :api-event
+            (merge params
+              {:path-params {:api-event-id (:id event)}})))
+
+        resource-definition
+        {:event-loader event-loader
+         :event-link   event-link-fn}
+
+        options
+        {:base-url            base-url
+         :router              router
+         :resource-definition resource-definition}]
+    (behaviours/includes-links-on-embedded-resources :events :self
+      hrefs
+      options)))
+
+(behaviours/when no-event-transformer-fn-provided
+  (let [base-url "https://example.com"
+        event-loader (less-than-one-page-of-events-loader)
         events (events-resource/query event-loader {})
-        event-transformer
+        event-properties
+        (map (fn [event]
+               {:id (:id event)
+                :type (name (:type event))
+                :stream (:stream event)
+                :category (name (:category event))
+                :creator (:creator event)
+                :observedAt (str (:observed-at event))
+                :occurredAt (str (:occurred-at event))})
+          events)
+        resource-definition {:event-loader event-loader}
+        options {:base-url            base-url
+                 :resource-definition resource-definition}]
+    (behaviours/includes-properties-on-embedded-resources :events
+      [:id :type :stream :category :creator :observedAt :occurredAt]
+      event-properties
+      options)
+    (behaviours/does-not-include-properties-on-embedded-resources :events
+      [:payload]
+      options)))
+
+(behaviours/when event-transformer-fn-provided
+  (let [base-url "https://example.com"
+        event-loader (less-than-one-page-of-events-loader)
+        events (events-resource/query event-loader {})
+        event-properties
+        (map (fn [event]
+               {:id (:id event)
+                :type (name (:type event))})
+          events)
+        hrefs (map #(str "https://example.com/events/" (:id %)) events)
+
+        event-transformer-fn
         (fn [{:keys [resource] :as context} event]
           (let [event-link-fn (:event-link resource)
-                event-link (event-link-fn context event)
+                event-link (event-link-fn context event {})
                 resource (hal/new-resource event-link)
                 resource (hal/add-properties resource
-                           (select-keys event [:id :type]))]
+                           (select-keys event
+                             [:id
+                              :type]))]
             resource))
-        handler (resource-handler dependencies
-                  {:event-loader      event-loader
-                   :event-transformer event-transformer})
-        request (ring/request :get "https://example.com/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))
-        event-resources (hal/get-resource resource :events)]
-    (is (=
-          (map (fn [event]
-                 (hal/add-properties
-                   (hal/new-resource
-                     (str "https://example.com/events/" (:id event)))
-                   {:id   (:id event)
-                    :type (name (:type event))}))
-            events)
-          event-resources))))
 
-(deftest uses-event-link-function-for-event-self-link-when-provided
-  (let [event-loader (less-than-one-page-of-events-loader)
-        events (events-resource/query event-loader {})
-        router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :events]
-                   [["/events/" :api-event-id] :api-event]]]]]
-        dependencies {:router router}
-        handler (resource-handler dependencies
-                  {:event-loader event-loader
-                   :event-link
-                   (fn [{:keys [request router]} event]
-                     (hype/absolute-url-for request router :api-event
-                       {:path-params {:api-event-id (:id event)}}))})
-        request (ring/request :get "https://example.com/api/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))
-        event-resources (hal/get-resource resource :events)]
-    (is (=
-          (map (fn [event]
-                 (str "https://example.com/api/events/" (:id event)))
-            events)
-          (map (fn [event-resource]
-                 (hal/get-href event-resource :self))
-            event-resources)))))
+        resource-definition
+        {:event-loader      event-loader
+         :event-transformer event-transformer-fn}
 
-(deftest uses-events-link-function-for-resource-self-link-when-provided
-  (let [event-loader (less-than-one-page-of-events-loader)
-        router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :event-id] :event]]]]]
-        dependencies {:router router}
-        handler (resource-handler dependencies
-                  {:event-loader event-loader
-                   :events-link
-                   (fn [{:keys [request router]}]
-                     (hype/absolute-url-for request router :api-events))})
-        request (ring/request :get "https://example.com/api/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/api/events"
-          (hal/get-href resource :self)))))
+        options
+        {:base-url            base-url
+         :resource-definition resource-definition}]
+    (behaviours/includes-links-on-embedded-resources :events :self
+      hrefs
+      options)
+    (behaviours/includes-properties-on-embedded-resources :events
+      [:id :type]
+      event-properties
+      options)
+    (behaviours/does-not-include-properties-on-embedded-resources :events
+      [:stream :category :creator :observedAt :occurredAt :payload]
+      options)))
 
-(deftest uses-events-link-function-for-resource-first-link-when-provided
-  (let [event-loader (less-than-one-page-of-events-loader)
-        router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :event-id] :event]]]]]
-        dependencies {:router router}
-        handler (resource-handler dependencies
-                  {:event-loader event-loader
-                   :events-link
-                   (fn [{:keys [request router]}]
-                     (hype/absolute-url-for request router :api-events))})
-        request (ring/request :get "https://example.com/api/events")
-        result (handler request)
-        resource (hal-json/json->resource (:body result))]
-    (is (= "https://example.com/api/events"
-          (hal/get-href resource :first)))))
+(comment
+  (find-tests *ns*)
+
+  (run-tests
+    [(ns-resolve *ns* 'does-not-include-next-link-on-resource)])
+
+  (run-tests
+    (find-tests *ns*)
+    {:report report}))
