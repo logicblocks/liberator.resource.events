@@ -31,3 +31,14 @@ Plan
 * only support [{first, next, previous}, {sort}], not [{last}, {}]
 * support, type, stream, category, {observed|occurred}-{before|after}
 
+Done
+----
+
+* [{since, preceding}, {pick}]
+* [{first, next, previous}, {}]
+
+To Do
+-----
+
+* [{}, {sort}]
+* filter by [type, stream, category, {observed|occurred}-{before|after}]

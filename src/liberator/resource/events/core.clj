@@ -7,6 +7,11 @@
    [liberator.mixin.hypermedia.core :as hypermedia-mixin]
    [liberator.mixin.hal.core :as hal-mixin]))
 
+(defprotocol EventLoader
+  (query [loader context])
+  (before? [loader context])
+  (after? [loader context]))
+
 (defn- resource-attribute-as-value [{:keys [resource] :as context} attribute]
   (let [attribute-fn (attribute resource)]
     (attribute-fn context)))
@@ -15,10 +20,53 @@
   (let [attribute-fn (attribute resource)]
     (partial attribute-fn context)))
 
-(defprotocol EventLoader
-  (query [loader context])
-  (before? [loader context])
-  (after? [loader context]))
+(defn propagated-query-params [{:keys [request] :as context}]
+  (let [allowed-query-params
+        (resource-attribute-as-value context :allowed-query-params)
+        allowed-query-params (map name allowed-query-params)
+        request-query-params (:query-params request)]
+    (select-keys request-query-params allowed-query-params)))
+
+(defn excluding-query-params [query-params exclusions]
+  (apply dissoc query-params (map name exclusions)))
+
+(defn events-link
+  ([context]
+   (events-link context {}))
+  ([context params]
+   (events-link context params {}))
+  ([context params options]
+   (let [query-params
+         (propagated-query-params context)
+         query-params
+         (excluding-query-params query-params
+           (:query-param-exclusions options))
+         events-link-fn (resource-attribute-as-fn context :events-link)]
+     (events-link-fn
+       (merge params
+         {:query-params
+          (merge query-params (:query-params params))})))))
+
+(defn- self-link [context]
+  (events-link context))
+
+(defn- first-link [context]
+  (events-link context {}
+    {:query-param-exclusions #{:since :preceding}}))
+
+(defn- next-link [context events]
+  (let [last-event (last events)
+        last-event-id (:id last-event)]
+    (events-link context
+      {:query-params {:since last-event-id}}
+      {:query-param-exclusions #{:preceding}})))
+
+(defn- previous-link [context events]
+  (let [first-event (first events)
+        first-event-id (:id first-event)]
+    (events-link context
+      {:query-params {:preceding first-event-id}}
+      {:query-param-exclusions #{:since}})))
 
 (defrecord FnBackedEventLoader [fns]
   EventLoader
@@ -42,6 +90,8 @@
   {:href
    (hype/absolute-url-for request router :events params)})
 
+(def default-self-link-fn self-link)
+
 (defn default-event-loader [_]
   (->event-loader {:query (fn [_] [])}))
 
@@ -63,50 +113,7 @@
 
 (def default-events-to-pick 10)
 
-(def default-allowed-query-params #{:pick :since})
-
-(defn propagated-query-params [{:keys [request] :as context}]
-  (let [allowed-query-params
-        (resource-attribute-as-value context :allowed-query-params)
-        allowed-query-params (map name allowed-query-params)
-        request-query-params (:query-params request)]
-    (select-keys request-query-params allowed-query-params)))
-
-(defn excluding-query-params [query-params exclusions]
-  (apply dissoc query-params (map name exclusions)))
-
-(defn- self-link [context]
-  (let [query-params (propagated-query-params context)
-        events-link-fn (resource-attribute-as-fn context :events-link)
-        self-link (events-link-fn {:query-params query-params})]
-    self-link))
-
-(defn- first-link [context]
-  (let [query-params (excluding-query-params
-                       (propagated-query-params context)
-                       #{:since})
-        events-link-fn (resource-attribute-as-fn context :events-link)
-        events-link (events-link-fn {:query-params query-params})]
-    events-link))
-
-(defn- next-link [context events]
-  (let [last-event (last events)
-        last-event-id (:id last-event)
-        query-params (merge (propagated-query-params context)
-                       {:since last-event-id})
-        events-link-fn (resource-attribute-as-fn context :events-link)
-        events-link (events-link-fn {:query-params query-params})]
-    events-link))
-
-(defn- previous-link [context events]
-  (let [first-event (first events)
-        first-event-id (:id first-event)
-        query-params (-> (propagated-query-params context)
-                       (excluding-query-params #{:since})
-                       (merge {:preceding first-event-id}))
-        events-link-fn (resource-attribute-as-fn context :events-link)
-        events-link (events-link-fn {:query-params query-params})]
-    events-link))
+(def default-allowed-query-params #{:pick :since :preceding})
 
 (defn definitions
   ([_]
@@ -119,13 +126,7 @@
 
     :allowed-query-params      default-allowed-query-params
 
-    :self-link
-    (fn [context]
-      (let [query-params (propagated-query-params context)
-            events-link-fn
-            (resource-attribute-as-fn context :events-link)
-            events-link (events-link-fn {:query-params query-params})]
-        events-link))
+    :self-link                 default-self-link-fn
 
     :handle-ok
     (fn [context]
