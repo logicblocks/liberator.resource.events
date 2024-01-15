@@ -183,6 +183,23 @@
       [:stream :category :creator :observedAt :occurredAt :payload]
       options)))
 
+(behaviours/when pick-query-param-provided
+  (let [base-url "https://example.com"
+        query-params {:pick 20}
+        event-loader (exactly-one-page-of-events-loader)
+        resource-definition {:event-loader event-loader}
+        options {:base-url            base-url
+                 :query-params        query-params
+                 :resource-definition resource-definition}]
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/events?pick=20"
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events?pick=20"
+      options)
+    (behaviours/does-not-include-link-on-resource :next options)
+    (behaviours/does-not-include-link-on-resource :previous options)))
+
 (comment
   (find-tests *ns*)
 

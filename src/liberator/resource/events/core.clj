@@ -7,6 +7,14 @@
    [liberator.mixin.hypermedia.core :as hypermedia-mixin]
    [liberator.mixin.hal.core :as hal-mixin]))
 
+(defn- resource-attribute-as-value [{:keys [resource] :as context} attribute]
+  (let [attribute-fn (attribute resource)]
+    (attribute-fn context)))
+
+(defn- resource-attribute-as-fn [{:keys [resource] :as context} attribute]
+  (let [attribute-fn (attribute resource)]
+    (partial attribute-fn context)))
+
 (defprotocol EventLoader
   (query [loader context])
   (before? [loader context])
@@ -37,8 +45,6 @@
 (defn default-event-loader [_]
   (->event-loader {:query (fn [_] [])}))
 
-(def default-events-to-pick 10)
-
 (defn default-event-transformer
   [{:keys [resource] :as context} event]
   (let [event-link-fn (:event-link resource)
@@ -55,30 +61,51 @@
                       :occurred-at]))]
     resource))
 
-(defn- self-link [{:keys [resource] :as context}]
-  (let [events-link-fn (:events-link resource)
-        self-link (events-link-fn context {})]
+(def default-events-to-pick 10)
+
+(def default-allowed-query-params #{:pick :since})
+
+(defn propagated-query-params [{:keys [request] :as context}]
+  (let [allowed-query-params
+        (resource-attribute-as-value context :allowed-query-params)
+        allowed-query-params (map name allowed-query-params)
+        request-query-params (:query-params request)]
+    (select-keys request-query-params allowed-query-params)))
+
+(defn excluding-query-params [query-params exclusions]
+  (apply dissoc query-params (map name exclusions)))
+
+(defn- self-link [context]
+  (let [query-params (propagated-query-params context)
+        events-link-fn (resource-attribute-as-fn context :events-link)
+        self-link (events-link-fn {:query-params query-params})]
     self-link))
 
-(defn- first-link [{:keys [resource] :as context}]
-  (let [events-link-fn (:events-link resource)
-        events-link (events-link-fn context {})]
+(defn- first-link [context]
+  (let [query-params (excluding-query-params
+                       (propagated-query-params context)
+                       #{:since})
+        events-link-fn (resource-attribute-as-fn context :events-link)
+        events-link (events-link-fn {:query-params query-params})]
     events-link))
 
-(defn- next-link [{:keys [resource] :as context} events]
+(defn- next-link [context events]
   (let [last-event (last events)
         last-event-id (:id last-event)
-        events-link-fn (:events-link resource)
-        events-link (events-link-fn context
-                      {:query-params {:since last-event-id}})]
+        query-params (merge (propagated-query-params context)
+                       {:since last-event-id})
+        events-link-fn (resource-attribute-as-fn context :events-link)
+        events-link (events-link-fn {:query-params query-params})]
     events-link))
 
-(defn- previous-link [{:keys [resource] :as context} events]
+(defn- previous-link [context events]
   (let [first-event (first events)
         first-event-id (:id first-event)
-        events-link-fn (:events-link resource)
-        events-link (events-link-fn context
-                      {:query-params {:preceding first-event-id}})]
+        query-params (-> (propagated-query-params context)
+                       (excluding-query-params #{:since})
+                       (merge {:preceding first-event-id}))
+        events-link-fn (resource-attribute-as-fn context :events-link)
+        events-link (events-link-fn {:query-params query-params})]
     events-link))
 
 (defn definitions
@@ -90,17 +117,22 @@
     :event-link                default-event-link-fn
     :events-link               default-events-link-fn
 
-    :self-link                 (fn [{:keys [resource] :as context}]
-                                 (let [events-link-fn (:events-link resource)
-                                       events-link (events-link-fn context {})]
-                                   events-link))
+    :allowed-query-params      default-allowed-query-params
+
+    :self-link
+    (fn [context]
+      (let [query-params (propagated-query-params context)
+            events-link-fn
+            (resource-attribute-as-fn context :events-link)
+            events-link (events-link-fn {:query-params query-params})]
+        events-link))
 
     :handle-ok
-    (fn [{:keys [resource] :as context}]
-      (let [event-loader-fn (:event-loader resource)
-            event-loader (event-loader-fn)
-            event-transformer-fn (:event-transformer resource)
-            event-transformer (partial event-transformer-fn context)
+    (fn [context]
+      (let [event-loader
+            (resource-attribute-as-value context :event-loader)
+            event-transformer
+            (resource-attribute-as-fn context :event-transformer)
 
             events (query event-loader context)
             before? (before? event-loader context)

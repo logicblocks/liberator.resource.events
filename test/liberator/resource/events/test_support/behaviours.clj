@@ -13,13 +13,14 @@
 
 (def ^:dynamic *when* nil)
 
-(defn fetch-events [{:keys [resource-definition router base-url]
-                     :or   {base-url "https://example.com"
-                            router   handlers/default-router}}]
+(defn fetch-events [{:keys [resource-definition router base-url query-params]
+                     :or   {base-url     "https://example.com"
+                            query-params {}
+                            router       handlers/default-router}}]
   (let [handler (handlers/resource-handler
                   {:router router}
                   resource-definition)
-        request (ring/request :get (str base-url "/events"))]
+        request (ring/request :get (str base-url "/events") query-params)]
     (handler request)))
 
 (defn ->resource [response]
@@ -61,7 +62,6 @@
   (let [name (test-name "responds-with-status-" status-code)]
     `(deftest ~name
        (let [response# (fetch-events ~options)]
-         (clojure.pprint/pprint response#)
          (is (= ~status-code (:status response#)))))))
 
 (defmacro includes-link-on-resource

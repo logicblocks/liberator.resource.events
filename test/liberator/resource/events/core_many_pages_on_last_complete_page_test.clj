@@ -1,4 +1,4 @@
-(ns liberator.resource.events.core-one-event-test
+(ns liberator.resource.events.core-many-pages-on-last-complete-page-test
   (:require
    [halboy.resource :as hal]
 
@@ -12,52 +12,71 @@
    [liberator.resource.events.test-support.data :as data]
    [liberator.resource.events.test-support.behaviours :as behaviours]))
 
-(defn one-event-loader
-  ([] (one-event-loader (data/random-event)))
-  ([event]
-   (events-resource/->event-loader
-     {:query   (constantly [event])
-      :before? (constantly false)
-      :after?  (constantly false)})))
+(defn many-pages-of-events-on-last-complete-page []
+  (let [events
+        (take events-resource/default-events-to-pick
+          (repeatedly data/random-event))]
+    (events-resource/->event-loader
+      {:query   (constantly events)
+       :before? (constantly true)
+       :after?  (constantly false)})))
 
-(let [base-url "https://example.com"
-      event (data/random-event)
-      event-loader (one-event-loader event)
+(let [event-loader (many-pages-of-events-on-last-complete-page)
+
       resource-definition {:event-loader event-loader}
+
+      base-url "https://example.com"
+      query-params {:since (data/random-uuid-string)}
+
       options {:base-url            base-url
+               :query-params        query-params
                :resource-definition resource-definition}]
   (behaviours/responds-with-status 200 options)
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
     options)
-  (behaviours/does-not-include-link-on-resource :next options)
-  (behaviours/does-not-include-link-on-resource :previous options)
-  (behaviours/includes-embedded-resources-on-resource :events 1 options)
-  (behaviours/includes-links-on-embedded-resources :events :self
-    [(str "https://example.com/events/" (:id event))]
-    options))
+  (behaviours/does-not-include-link-on-resource :next
+    options)
+  (behaviours/includes-embedded-resources-on-resource :events 10 options))
 
 (behaviours/when no-events-link-fn-provided
-  (let [base-url "https://example.com"
-        event-loader (one-event-loader)
+  (let [event-loader (many-pages-of-events-on-last-complete-page)
+        events (events-resource/query event-loader {})
+        since-event-id (data/random-uuid-string)
+        first-event (first events)
+        first-event-id (:id first-event)
+
         resource-definition {:event-loader event-loader}
+
+        base-url "https://example.com"
+        query-params {:since since-event-id}
+
         options {:base-url            base-url
+                 :query-params        query-params
                  :resource-definition resource-definition}]
     (behaviours/includes-link-on-resource :self
-      "https://example.com/events"
+      (str "https://example.com/events?since=" since-event-id)
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/events"
+      options)
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when events-link-fn-provided
-  (let [base-url "https://example.com/api"
-        router [""
+  (let [router [""
                 [["/api"
                   [["" :discovery]
                    ["/events" :api-events]
                    [["/events/" :event-id] :event]]]]]
-        event-loader (one-event-loader)
+
+        event-loader (many-pages-of-events-on-last-complete-page)
+        events (events-resource/query event-loader {})
+        since-event-id (data/random-uuid-string)
+        first-event (first events)
+        first-event-id (:id first-event)
+
         events-link-fn
         (fn [{:keys [request router]} params]
           (hype/absolute-url-for request router :api-events params))
@@ -66,39 +85,57 @@
         {:event-loader event-loader
          :events-link  events-link-fn}
 
+        base-url "https://example.com/api"
+        query-params {:since since-event-id}
+
         options
         {:base-url            base-url
+         :query-params        query-params
          :router              router
          :resource-definition resource-definition}]
 
     (behaviours/includes-link-on-resource :self
-      "https://example.com/api/events"
+      (str "https://example.com/api/events?since=" since-event-id)
       options)
 
     (behaviours/includes-link-on-resource :first
       "https://example.com/api/events"
+      options)
+
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/api/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when no-event-link-fn-provided
-  (let [base-url "https://example.com"
-        event (data/random-event)
-        event-loader (one-event-loader event)
+  (let [event-loader (many-pages-of-events-on-last-complete-page)
+        events (events-resource/query event-loader {})
+        since-event-id (data/random-uuid-string)
+
+        hrefs (map #(str "https://example.com/events/" (:id %)) events)
+
         resource-definition {:event-loader event-loader}
+
+        base-url "https://example.com"
+        query-params {:since since-event-id}
+
         options {:base-url            base-url
+                 :query-params        query-params
                  :resource-definition resource-definition}]
     (behaviours/includes-links-on-embedded-resources :events :self
-      [(str "https://example.com/events/" (:id event))]
+      hrefs
       options)))
 
 (behaviours/when event-link-fn-provided
-  (let [base-url "https://example.com/api"
-        router [""
+  (let [router [""
                 [["/api"
                   [["" :discovery]
                    ["/events" :api-events]
                    [["/events/" :api-event-id] :api-event]]]]]
-        event (data/random-event)
-        event-loader (one-event-loader event)
+
+        event-loader (many-pages-of-events-on-last-complete-page)
+        events (events-resource/query event-loader {})
+        since-event-id (data/random-uuid-string)
+        hrefs (map #(str "https://example.com/api/events/" (:id %)) events)
 
         event-link-fn
         (fn [{:keys [request router]} event params]
@@ -110,39 +147,61 @@
         {:event-loader event-loader
          :event-link   event-link-fn}
 
+        base-url "https://example.com/api"
+        query-params {:since since-event-id}
+
         options
         {:base-url            base-url
+         :query-params        query-params
          :router              router
          :resource-definition resource-definition}]
     (behaviours/includes-links-on-embedded-resources :events :self
-      [(str "https://example.com/api/events/" (:id event))]
+      hrefs
       options)))
 
 (behaviours/when no-event-transformer-fn-provided
-  (let [base-url "https://example.com"
-        event (data/random-event)
-        event-loader (one-event-loader event)
+  (let [event-loader (many-pages-of-events-on-last-complete-page)
+        events (events-resource/query event-loader {})
+        since-event-id (data/random-uuid-string)
+
+        event-properties
+        (map (fn [event]
+               {:id         (:id event)
+                :type       (name (:type event))
+                :stream     (:stream event)
+                :category   (name (:category event))
+                :creator    (:creator event)
+                :observedAt (str (:observed-at event))
+                :occurredAt (str (:occurred-at event))})
+          events)
+
         resource-definition {:event-loader event-loader}
+
+        base-url "https://example.com"
+        query-params {:since since-event-id}
+
         options {:base-url            base-url
+                 :query-params        query-params
                  :resource-definition resource-definition}]
     (behaviours/includes-properties-on-embedded-resources :events
       [:id :type :stream :category :creator :observedAt :occurredAt]
-      [{:id         (:id event)
-        :type       (name (:type event))
-        :stream     (:stream event)
-        :category   (name (:category event))
-        :creator    (:creator event)
-        :observedAt (str (:observed-at event))
-        :occurredAt (str (:occurred-at event))}]
+      event-properties
       options)
     (behaviours/does-not-include-properties-on-embedded-resources :events
       [:payload]
       options)))
 
 (behaviours/when event-transformer-fn-provided
-  (let [base-url "https://example.com"
-        event (data/random-event)
-        event-loader (one-event-loader event)
+  (let [event-loader (many-pages-of-events-on-last-complete-page)
+        events (events-resource/query event-loader {})
+        since-event-id (data/random-uuid-string)
+
+        event-properties
+        (map (fn [event]
+               {:id   (:id event)
+                :type (name (:type event))})
+          events)
+        hrefs (map #(str "https://example.com/events/" (:id %)) events)
 
         event-transformer-fn
         (fn [{:keys [resource] :as context} event]
@@ -159,44 +218,29 @@
         {:event-loader      event-loader
          :event-transformer event-transformer-fn}
 
+        base-url "https://example.com"
+        query-params {:since since-event-id}
+
         options
         {:base-url            base-url
+         :query-params        query-params
          :resource-definition resource-definition}]
     (behaviours/includes-links-on-embedded-resources :events :self
-      [(str "https://example.com/events/" (:id event))]
+      hrefs
       options)
-
     (behaviours/includes-properties-on-embedded-resources :events
       [:id :type]
-      [{:id   (:id event)
-        :type (name (:type event))}]
+      event-properties
       options)
     (behaviours/does-not-include-properties-on-embedded-resources :events
       [:stream :category :creator :observedAt :occurredAt :payload]
       options)))
 
-(behaviours/when pick-query-param-provided
-  (let [base-url "https://example.com"
-        query-params {:pick 20}
-        event-loader (one-event-loader)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :query-params        query-params
-                 :resource-definition resource-definition}]
-    (behaviours/includes-link-on-resource :self
-      "https://example.com/events?pick=20"
-      options)
-    (behaviours/includes-link-on-resource :first
-      "https://example.com/events?pick=20"
-      options)
-    (behaviours/does-not-include-link-on-resource :next options)
-    (behaviours/does-not-include-link-on-resource :previous options)))
-
 (comment
   (find-tests *ns*)
 
   (run-tests
-    [(ns-resolve *ns* 'responds-with-status-200)])
+    [(ns-resolve *ns* 'does-not-include-next-link-on-resource)])
 
   (run-tests
     (find-tests *ns*)
