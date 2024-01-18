@@ -12,6 +12,10 @@
 (defn random-event-category []
   (rand-nth [:event-category-1 :event-category-2 :event-category-3]))
 
+(defn random-base-url []
+  (let [hostname (first (lorem/words))]
+    (format "https://%s.com" hostname)))
+
 (defn random-url []
   (let [words (take 2 (lorem/words))
         id (random-uuid-string)]

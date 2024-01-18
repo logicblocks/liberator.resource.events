@@ -96,10 +96,9 @@
   (->event-loader {:query (fn [_] [])}))
 
 (defn default-event-transformer
-  [{:keys [resource] :as context} event]
-  (let [event-link-fn (:event-link resource)
-        event-link (event-link-fn context event {})
-        resource (hal/new-resource event-link)
+  [context event]
+  (let [event-link (resource-attribute-as-fn context :event-link)
+        resource (hal/new-resource (event-link event {}))
         resource (hal/add-properties resource
                    (select-keys event
                      [:id
@@ -113,7 +112,7 @@
 
 (def default-events-to-pick 10)
 
-(def default-allowed-query-params #{:pick :since :preceding})
+(def default-allowed-query-params #{:pick :since :preceding :sort})
 
 (defn definitions
   ([_]

@@ -7,25 +7,18 @@
    [eftest.runner :refer [find-tests run-tests]]
    [eftest.report.pretty :refer [report]]
 
-   [liberator.resource.events.core :as events-resource]
+   [liberator.resource.events.test-support.behaviours :as behaviours]
+   [liberator.resource.events.test-support.scenarios :as scenarios]))
 
-   [liberator.resource.events.test-support.data :as data]
-   [liberator.resource.events.test-support.behaviours :as behaviours]))
+(def one-event-scenario
+  (scenarios/make-scenario
+    {:preceding-events?  false
+     :subsequent-events? false
+     :page-size          1}))
 
-(defn one-event-loader
-  ([] (one-event-loader (data/random-event)))
-  ([event]
-   (events-resource/->event-loader
-     {:query   (constantly [event])
-      :before? (constantly false)
-      :after?  (constantly false)})))
-
-(let [base-url "https://example.com"
-      event (data/random-event)
-      event-loader (one-event-loader event)
-      resource-definition {:event-loader event-loader}
-      options {:base-url            base-url
-               :resource-definition resource-definition}]
+(let [{:keys [events options]}
+      (one-event-scenario
+        {:base-url "https://example.com"})]
   (behaviours/responds-with-status 200 options)
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
@@ -34,15 +27,13 @@
   (behaviours/does-not-include-link-on-resource :previous options)
   (behaviours/includes-embedded-resources-on-resource :events 1 options)
   (behaviours/includes-links-on-embedded-resources :events :self
-    [(str "https://example.com/events/" (:id event))]
+    [(str "https://example.com/events/" (:id (first events)))]
     options))
 
 (behaviours/when no-events-link-fn-provided
-  (let [base-url "https://example.com"
-        event-loader (one-event-loader)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :resource-definition resource-definition}]
+  (let [{:keys [options]}
+        (one-event-scenario
+          {:base-url "https://example.com"})]
     (behaviours/includes-link-on-resource :self
       "https://example.com/events"
       options)
@@ -51,143 +42,120 @@
       options)))
 
 (behaviours/when events-link-fn-provided
-  (let [base-url "https://example.com/api"
-        router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :event-id] :event]]]]]
-        event-loader (one-event-loader)
-        events-link-fn
-        (fn [{:keys [request router]} params]
-          (hype/absolute-url-for request router :api-events params))
-
-        resource-definition
-        {:event-loader event-loader
-         :events-link  events-link-fn}
-
-        options
-        {:base-url            base-url
-         :router              router
-         :resource-definition resource-definition}]
-
+  (let [{:keys [options]}
+        (one-event-scenario
+          {:base-url "https://example.com/api"
+           :router   [""
+                      [["/api"
+                        [["" :discovery]
+                         ["/events" :api-events]
+                         [["/events/" :api-event-id] :api-event]]]]]
+           :resource-definition
+           {:events-link
+            (fn [{:keys [request router]} params]
+              (hype/absolute-url-for request router :api-events params))}})]
     (behaviours/includes-link-on-resource :self
       "https://example.com/api/events"
       options)
-
     (behaviours/includes-link-on-resource :first
       "https://example.com/api/events"
       options)))
 
 (behaviours/when no-event-link-fn-provided
-  (let [base-url "https://example.com"
-        event (data/random-event)
-        event-loader (one-event-loader event)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :resource-definition resource-definition}]
+  (let [{:keys [events options]}
+        (one-event-scenario
+          {:base-url "https://example.com"})]
     (behaviours/includes-links-on-embedded-resources :events :self
-      [(str "https://example.com/events/" (:id event))]
+      [(str "https://example.com/events/" (:id (first events)))]
       options)))
 
 (behaviours/when event-link-fn-provided
-  (let [base-url "https://example.com/api"
-        router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :api-event-id] :api-event]]]]]
-        event (data/random-event)
-        event-loader (one-event-loader event)
-
-        event-link-fn
-        (fn [{:keys [request router]} event params]
-          (hype/absolute-url-for request router :api-event
-            (merge params
-              {:path-params {:api-event-id (:id event)}})))
-
-        resource-definition
-        {:event-loader event-loader
-         :event-link   event-link-fn}
-
-        options
-        {:base-url            base-url
-         :router              router
-         :resource-definition resource-definition}]
+  (let [{:keys [events options]}
+        (one-event-scenario
+          {:base-url "https://example.com/api"
+           :router   [""
+                      [["/api"
+                        [["" :discovery]
+                         ["/events" :api-events]
+                         [["/events/" :api-event-id] :api-event]]]]]
+           :resource-definition
+           {:event-link
+            (fn [{:keys [request router]} event params]
+              (hype/absolute-url-for request router :api-event
+                (merge params
+                  {:path-params {:api-event-id (:id event)}})))}})]
     (behaviours/includes-links-on-embedded-resources :events :self
-      [(str "https://example.com/api/events/" (:id event))]
+      [(str "https://example.com/api/events/" (:id (first events)))]
       options)))
 
 (behaviours/when no-event-transformer-fn-provided
-  (let [base-url "https://example.com"
-        event (data/random-event)
-        event-loader (one-event-loader event)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :resource-definition resource-definition}]
+  (let [{:keys [events options]}
+        (one-event-scenario)]
     (behaviours/includes-properties-on-embedded-resources :events
       [:id :type :stream :category :creator :observedAt :occurredAt]
-      [{:id         (:id event)
-        :type       (name (:type event))
-        :stream     (:stream event)
-        :category   (name (:category event))
-        :creator    (:creator event)
-        :observedAt (str (:observed-at event))
-        :occurredAt (str (:occurred-at event))}]
+      [{:id         (:id (first events))
+        :type       (name (:type (first events)))
+        :stream     (:stream (first events))
+        :category   (name (:category (first events)))
+        :creator    (:creator (first events))
+        :observedAt (str (:observed-at (first events)))
+        :occurredAt (str (:occurred-at (first events)))}]
       options)
     (behaviours/does-not-include-properties-on-embedded-resources :events
       [:payload]
       options)))
 
 (behaviours/when event-transformer-fn-provided
-  (let [base-url "https://example.com"
-        event (data/random-event)
-        event-loader (one-event-loader event)
-
-        event-transformer-fn
-        (fn [{:keys [resource] :as context} event]
-          (let [event-link-fn (:event-link resource)
-                event-link (event-link-fn context event {})
-                resource (hal/new-resource event-link)
-                resource (hal/add-properties resource
-                           (select-keys event
-                             [:id
-                              :type]))]
-            resource))
-
-        resource-definition
-        {:event-loader      event-loader
-         :event-transformer event-transformer-fn}
-
-        options
-        {:base-url            base-url
-         :resource-definition resource-definition}]
+  (let [{:keys [events options]}
+        (one-event-scenario
+          {:base-url "https://example.com"
+           :resource-definition
+           {:event-transformer
+            (fn [{:keys [resource] :as context} event]
+              (let [event-link-fn (:event-link resource)
+                    event-link (event-link-fn context event {})
+                    resource (hal/new-resource event-link)
+                    resource (hal/add-properties resource
+                               (select-keys event
+                                 [:id
+                                  :type]))]
+                resource))}})]
     (behaviours/includes-links-on-embedded-resources :events :self
-      [(str "https://example.com/events/" (:id event))]
+      [(str "https://example.com/events/" (:id (first events)))]
       options)
-
     (behaviours/includes-properties-on-embedded-resources :events
       [:id :type]
-      [{:id   (:id event)
-        :type (name (:type event))}]
+      [{:id   (:id (first events))
+        :type (name (:type (first events)))}]
       options)
     (behaviours/does-not-include-properties-on-embedded-resources :events
       [:stream :category :creator :observedAt :occurredAt :payload]
       options)))
 
 (behaviours/when pick-query-param-provided
-  (let [base-url "https://example.com"
-        query-params {:pick 20}
-        event-loader (one-event-loader)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :query-params        query-params
-                 :resource-definition resource-definition}]
+  (let [{:keys [options]}
+        (one-event-scenario
+          {:base-url     "https://example.com"
+           :query-params {:pick 20}})]
     (behaviours/includes-link-on-resource :self
       "https://example.com/events?pick=20"
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/events?pick=20"
+      options)
+    (behaviours/does-not-include-link-on-resource :next options)
+    (behaviours/does-not-include-link-on-resource :previous options)))
+
+(behaviours/when sort-query-param-provided
+  (let [{:keys [options]}
+        (one-event-scenario
+          {:base-url     "https://example.com"
+           :query-params {:sort "desc"}})]
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/events?sort=desc"
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events?sort=desc"
       options)
     (behaviours/does-not-include-link-on-resource :next options)
     (behaviours/does-not-include-link-on-resource :previous options)))

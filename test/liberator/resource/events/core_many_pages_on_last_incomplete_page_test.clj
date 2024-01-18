@@ -7,28 +7,22 @@
    [eftest.runner :refer [find-tests run-tests]]
    [eftest.report.pretty :refer [report]]
 
-   [liberator.resource.events.core :as events-resource]
+   [liberator.resource.events.test-support.behaviours :as behaviours]
+   [liberator.resource.events.test-support.scenarios :as scenarios]))
 
-   [liberator.resource.events.test-support.data :as data]
-   [liberator.resource.events.test-support.behaviours :as behaviours]))
+(def many-pages-of-events-on-last-incomplete-page-scenario
+  (scenarios/make-scenario
+    {:preceding-events? true
+     :subsequent-events? false
+     :page-size 5
+     :query-params
+     (fn [{:keys [since-event-id]}]
+       {:since since-event-id})}))
 
-(defn many-pages-of-events-on-last-incomplete-page []
-  (let [events (take 5 (repeatedly data/random-event))]
-    (events-resource/->event-loader
-      {:query   (constantly events)
-       :before? (constantly true)
-       :after?  (constantly false)})))
-
-(let [event-loader (many-pages-of-events-on-last-incomplete-page)
-
-      resource-definition {:event-loader event-loader}
-
-      base-url "https://example.com"
-      query-params {:since (data/random-uuid-string)}
-
-      options {:base-url            base-url
-               :query-params        query-params
-               :resource-definition resource-definition}]
+(let [{:keys [options]}
+      (many-pages-of-events-on-last-incomplete-page-scenario
+        {:page-size 5
+         :base-url "https://example.com"})]
   (behaviours/responds-with-status 200 options)
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
@@ -38,20 +32,9 @@
   (behaviours/includes-embedded-resources-on-resource :events 5 options))
 
 (behaviours/when no-events-link-fn-provided
-  (let [event-loader (many-pages-of-events-on-last-incomplete-page)
-        events (events-resource/query event-loader {})
-        since-event-id (data/random-uuid-string)
-        first-event (first events)
-        first-event-id (:id first-event)
-
-        resource-definition {:event-loader event-loader}
-
-        base-url "https://example.com"
-        query-params {:since since-event-id}
-
-        options {:base-url            base-url
-                 :query-params        query-params
-                 :resource-definition resource-definition}]
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url "https://example.com"})]
     (behaviours/includes-link-on-resource :self
       (str "https://example.com/events?since=" since-event-id)
       options)
@@ -63,105 +46,60 @@
       options)))
 
 (behaviours/when events-link-fn-provided
-  (let [router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :event-id] :event]]]]]
-
-        event-loader (many-pages-of-events-on-last-incomplete-page)
-        events (events-resource/query event-loader {})
-        since-event-id (data/random-uuid-string)
-        first-event (first events)
-        first-event-id (:id first-event)
-
-        events-link-fn
-        (fn [{:keys [request router]} params]
-          (hype/absolute-url-for request router :api-events params))
-
-        resource-definition
-        {:event-loader event-loader
-         :events-link  events-link-fn}
-
-        base-url "https://example.com/api"
-        query-params {:since since-event-id}
-
-        options
-        {:base-url            base-url
-         :query-params        query-params
-         :router              router
-         :resource-definition resource-definition}]
-
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url "https://example.com/api"
+           :router [""
+                    [["/api"
+                      [["" :discovery]
+                       ["/events" :api-events]
+                       [["/events/" :api-event-id] :api-event]]]]]
+           :resource-definition
+           {:events-link
+            (fn [{:keys [request router]} params]
+              (hype/absolute-url-for request router :api-events params))}})]
     (behaviours/includes-link-on-resource :self
       (str "https://example.com/api/events?since=" since-event-id)
       options)
-
     (behaviours/includes-link-on-resource :first
       "https://example.com/api/events"
       options)
-
     (behaviours/includes-link-on-resource :previous
       (str "https://example.com/api/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when no-event-link-fn-provided
-  (let [event-loader (many-pages-of-events-on-last-incomplete-page)
-        events (events-resource/query event-loader {})
-        since-event-id (data/random-uuid-string)
-
-        hrefs (map #(str "https://example.com/events/" (:id %)) events)
-
-        resource-definition {:event-loader event-loader}
-
-        base-url "https://example.com"
-        query-params {:since since-event-id}
-
-        options {:base-url            base-url
-                 :query-params        query-params
-                 :resource-definition resource-definition}]
+  (let [{:keys [events options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url "https://example.com"})
+        hrefs (map #(str "https://example.com/events/" (:id %)) events)]
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)))
 
 (behaviours/when event-link-fn-provided
-  (let [router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :api-event-id] :api-event]]]]]
-
-        event-loader (many-pages-of-events-on-last-incomplete-page)
-        events (events-resource/query event-loader {})
-        since-event-id (data/random-uuid-string)
-        hrefs (map #(str "https://example.com/api/events/" (:id %)) events)
-
-        event-link-fn
-        (fn [{:keys [request router]} event params]
-          (hype/absolute-url-for request router :api-event
-            (merge params
-              {:path-params {:api-event-id (:id event)}})))
-
-        resource-definition
-        {:event-loader event-loader
-         :event-link   event-link-fn}
-
-        base-url "https://example.com/api"
-        query-params {:since since-event-id}
-
-        options
-        {:base-url            base-url
-         :query-params        query-params
-         :router              router
-         :resource-definition resource-definition}]
+  (let [{:keys [events options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url "https://example.com/api"
+           :router [""
+                    [["/api"
+                      [["" :discovery]
+                       ["/events" :api-events]
+                       [["/events/" :api-event-id] :api-event]]]]]
+           :resource-definition
+           {:event-link
+            (fn [{:keys [request router]} event params]
+              (hype/absolute-url-for request router :api-event
+                (merge params
+                  {:path-params {:api-event-id (:id event)}})))}})
+        hrefs (map #(str "https://example.com/api/events/" (:id %)) events)]
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)))
 
 (behaviours/when no-event-transformer-fn-provided
-  (let [event-loader (many-pages-of-events-on-last-incomplete-page)
-        events (events-resource/query event-loader {})
-        since-event-id (data/random-uuid-string)
-
+  (let [{:keys [events options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario)
         event-properties
         (map (fn [event]
                {:id         (:id event)
@@ -171,16 +109,7 @@
                 :creator    (:creator event)
                 :observedAt (str (:observed-at event))
                 :occurredAt (str (:occurred-at event))})
-          events)
-
-        resource-definition {:event-loader event-loader}
-
-        base-url "https://example.com"
-        query-params {:since since-event-id}
-
-        options {:base-url            base-url
-                 :query-params        query-params
-                 :resource-definition resource-definition}]
+          events)]
     (behaviours/includes-properties-on-embedded-resources :events
       [:id :type :stream :category :creator :observedAt :occurredAt]
       event-properties
@@ -190,39 +119,26 @@
       options)))
 
 (behaviours/when event-transformer-fn-provided
-  (let [event-loader (many-pages-of-events-on-last-incomplete-page)
-        events (events-resource/query event-loader {})
-        since-event-id (data/random-uuid-string)
-
+  (let [{:keys [events options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url "https://example.com"
+           :resource-definition
+           {:event-transformer
+            (fn [{:keys [resource] :as context} event]
+              (let [event-link-fn (:event-link resource)
+                    event-link (event-link-fn context event {})
+                    resource (hal/new-resource event-link)
+                    resource (hal/add-properties resource
+                               (select-keys event
+                                 [:id
+                                  :type]))]
+                resource))}})
         event-properties
         (map (fn [event]
                {:id   (:id event)
                 :type (name (:type event))})
           events)
-        hrefs (map #(str "https://example.com/events/" (:id %)) events)
-
-        event-transformer-fn
-        (fn [{:keys [resource] :as context} event]
-          (let [event-link-fn (:event-link resource)
-                event-link (event-link-fn context event {})
-                resource (hal/new-resource event-link)
-                resource (hal/add-properties resource
-                           (select-keys event
-                             [:id
-                              :type]))]
-            resource))
-
-        resource-definition
-        {:event-loader      event-loader
-         :event-transformer event-transformer-fn}
-
-        base-url "https://example.com"
-        query-params {:since since-event-id}
-
-        options
-        {:base-url            base-url
-         :query-params        query-params
-         :resource-definition resource-definition}]
+        hrefs (map #(str "https://example.com/events/" (:id %)) events)]
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)
@@ -232,6 +148,39 @@
       options)
     (behaviours/does-not-include-properties-on-embedded-resources :events
       [:stream :category :creator :observedAt :occurredAt :payload]
+      options)))
+
+(behaviours/when pick-query-param-provided
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url     "https://example.com"
+           :query-params {:pick 20}})]
+    (behaviours/includes-link-on-resource :self
+      (str "https://example.com/events?pick=20&since=" since-event-id)
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events?pick=20"
+      options)
+    (behaviours/does-not-include-link-on-resource :next options)
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?pick=20&preceding=" first-event-id)
+      options)))
+
+(behaviours/when sort-query-param-provided
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-incomplete-page-scenario
+          {:base-url "https://example.com"
+           :query-params {:sort "descending"}})]
+    (behaviours/includes-link-on-resource :self
+      (str "https://example.com/events?sort=descending&since=" since-event-id)
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events?sort=descending"
+      options)
+    (behaviours/does-not-include-link-on-resource :next options)
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?sort=descending&preceding="
+        first-event-id)
       options)))
 
 (comment

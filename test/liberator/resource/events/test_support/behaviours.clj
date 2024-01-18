@@ -9,18 +9,21 @@
 
    [ring.mock.request :as ring]
 
+   [org.bovinegenius.exploding-fish :as uri]
+
    [liberator.resource.events.test-support.handlers :as handlers]))
 
 (def ^:dynamic *when* nil)
 
-(defn fetch-events [{:keys [resource-definition router base-url query-params]
-                     :or   {base-url     "https://example.com"
-                            query-params {}
-                            router       handlers/default-router}}]
-  (let [handler (handlers/resource-handler
+(defn fetch-events [{:keys [resource-definition router base-url query-params]}]
+  (let [router (or router handlers/default-router)
+        base-url (or base-url "https://example.com")
+        query-params (or query-params, {})
+        handler (handlers/resource-handler
                   {:router router}
                   resource-definition)
-        request (ring/request :get (str base-url "/events") query-params)]
+        request (ring/request :get (str base-url "/events")
+                  query-params)]
     (handler request)))
 
 (defn ->resource [response]
@@ -31,6 +34,27 @@
 
 (defn get-embedded-resource [response key]
   (hal/get-resource (->resource response) key))
+
+(defmacro ex->nil [form]
+  `(try ~form (catch Exception _#)))
+
+(defn equivalent-uri [uri1 uri2]
+  (letfn [(uri [u] (ex->nil (uri/uri u)))
+          (query [u value] (ex->nil (uri/query u value)))
+          (query-map [u] (ex->nil (uri/query-map u)))]
+    (let [uri1 (uri uri1)
+          uri2 (uri uri2)
+          uri1-no-query-string (query uri1 nil)
+          uri2-no-query-string (query uri2 nil)
+          uri1-query-params (query-map uri1)
+          uri2-query-params (query-map uri2)]
+      (and
+        (= uri1-no-query-string uri2-no-query-string)
+        (= uri1-query-params uri2-query-params)))))
+
+(defn equivalent-uris [uris1 uris2]
+  (every? #(apply equivalent-uri %)
+    (map vector uris1 uris2)))
 
 (defn properties-description [property-keys]
   (let [property-key-names (map name property-keys)
@@ -69,7 +93,8 @@
   (let [name (test-name "includes-" (name rel) "-link-on-resource")]
     `(deftest ~name
        (let [response# (fetch-events ~options)]
-         (is (= ~href (get-resource-href response# ~rel)))))))
+         (is (equivalent-uri ~href
+               (get-resource-href response# ~rel)))))))
 
 (defmacro does-not-include-link-on-resource
   [rel options]
@@ -95,7 +120,7 @@
     `(deftest ~name
        (let [response# (fetch-events ~options)
              event-resources# (get-embedded-resource response# ~embed-key)]
-         (is (= ~hrefs
+         (is (equivalent-uris ~hrefs
                (map
                  (fn [event-resource#]
                    (hal/get-href event-resource# ~rel))

@@ -5,21 +5,18 @@
    [eftest.runner :refer [find-tests run-tests]]
    [eftest.report.pretty :refer [report]]
 
-   [liberator.resource.events.core :as events-resource]
-
+   [liberator.resource.events.test-support.scenarios :as scenarios]
    [liberator.resource.events.test-support.behaviours :as behaviours]))
 
-(defn no-events-loader []
-  (events-resource/->event-loader
-    {:query   (constantly [])
-     :before? (constantly false)
-     :after?  (constantly false)}))
+(def no-events-scenario
+  (scenarios/make-scenario
+    {:preceding-events?  false
+     :subsequent-events? false
+     :page-size 0}))
 
-(let [base-url "https://example.com"
-      event-loader (no-events-loader)
-      resource-definition {:event-loader event-loader}
-      options {:base-url            base-url
-               :resource-definition resource-definition}]
+(let [{:keys [options]}
+      (no-events-scenario
+        {:base-url "https://example.com"})]
   (behaviours/responds-with-status 200 options)
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
@@ -29,11 +26,9 @@
   (behaviours/includes-embedded-resources-on-resource :events 0 options))
 
 (behaviours/when no-events-link-fn-provided
-  (let [base-url "https://example.com"
-        event-loader (no-events-loader)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :resource-definition resource-definition}]
+  (let [{:keys [options]}
+        (no-events-scenario
+          {:base-url "https://example.com"})]
     (behaviours/includes-link-on-resource :self
       "https://example.com/events"
       options)
@@ -42,47 +37,49 @@
       options)))
 
 (behaviours/when events-link-fn-provided
-  (let [base-url "https://example.com/api"
-        router [""
-                [["/api"
-                  [["" :discovery]
-                   ["/events" :api-events]
-                   [["/events/" :event-id] :event]]]]]
-        event-loader (no-events-loader)
-        events-link-fn
-        (fn [{:keys [request router]} params]
-          (hype/absolute-url-for request router :api-events params))
-
-        resource-definition
-        {:event-loader event-loader
-         :events-link  events-link-fn}
-
-        options
-        {:base-url            base-url
-         :router              router
-         :resource-definition resource-definition}]
-
+  (let [{:keys [options]}
+        (no-events-scenario
+          {:base-url "https://example.com/api"
+           :router   [""
+                      [["/api"
+                        [["" :discovery]
+                         ["/events" :api-events]
+                         [["/events/" :api-event-id] :event]]]]]
+           :resource-definition
+           {:events-link
+            (fn [{:keys [request router]} params]
+              (hype/absolute-url-for request router :api-events params))}})]
     (behaviours/includes-link-on-resource :self
       "https://example.com/api/events"
       options)
-
     (behaviours/includes-link-on-resource :first
       "https://example.com/api/events"
       options)))
 
 (behaviours/when pick-query-param-provided
-  (let [base-url "https://example.com"
-        query-params {:pick 20}
-        event-loader (no-events-loader)
-        resource-definition {:event-loader event-loader}
-        options {:base-url            base-url
-                 :query-params        query-params
-                 :resource-definition resource-definition}]
+  (let [{:keys [options]}
+        (no-events-scenario
+          {:base-url     "https://example.com"
+           :query-params {:pick 20}})]
     (behaviours/includes-link-on-resource :self
       "https://example.com/events?pick=20"
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/events?pick=20"
+      options)
+    (behaviours/does-not-include-link-on-resource :next options)
+    (behaviours/does-not-include-link-on-resource :previous options)))
+
+(behaviours/when sort-query-param-provided
+  (let [{:keys [options]}
+        (no-events-scenario
+          {:base-url     "https://example.com"
+           :query-params {:sort "descending"}})]
+    (behaviours/includes-link-on-resource :self
+      "https://example.com/events?sort=descending"
+      options)
+    (behaviours/includes-link-on-resource :first
+      "https://example.com/events?sort=descending"
       options)
     (behaviours/does-not-include-link-on-resource :next options)
     (behaviours/does-not-include-link-on-resource :previous options)))
