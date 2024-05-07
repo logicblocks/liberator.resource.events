@@ -7,7 +7,7 @@
 
   :dependencies [[io.logicblocks/halboy "6.0.0"]
                  [io.logicblocks/hype "2.0.0"]
-                 [io.logicblocks/liberator.mixin "0.1.0-RC5"]]
+                 [io.logicblocks/liberator.mixin "0.1.0-RC12"]]
 
   :plugins [[lein-cloverage "1.2.4"]
             [lein-shell "0.5.0"]
@@ -33,7 +33,7 @@
 
                    [tick "0.7.5"]
 
-                   [ai.mypulse/placid-fish "2.1.6"]
+                   [lambdaisland/uri "1.19.155"]
 
                    [nrepl "1.1.0"]
                    [eftest "0.6.0"]

@@ -7,9 +7,8 @@
    [halboy.resource :as hal]
    [halboy.json :as hal-json]
 
+   [lambdaisland.uri :as uri]
    [ring.mock.request :as ring]
-
-   [org.bovinegenius.exploding-fish :as uri]
 
    [liberator.resource.events.test-support.handlers :as handlers]))
 
@@ -35,22 +34,16 @@
 (defn get-embedded-resource [response key]
   (hal/get-resource (->resource response) key))
 
-(defmacro ex->nil [form]
-  `(try ~form (catch Exception _#)))
-
 (defn equivalent-uri [uri1 uri2]
-  (letfn [(uri [u] (ex->nil (uri/uri u)))
-          (query [u value] (ex->nil (uri/query u value)))
-          (query-map [u] (ex->nil (uri/query-map u)))]
-    (let [uri1 (uri uri1)
-          uri2 (uri uri2)
-          uri1-no-query-string (query uri1 nil)
-          uri2-no-query-string (query uri2 nil)
-          uri1-query-params (query-map uri1)
-          uri2-query-params (query-map uri2)]
-      (and
-        (= uri1-no-query-string uri2-no-query-string)
-        (= uri1-query-params uri2-query-params)))))
+  (let [uri1 (uri/uri uri1)
+        uri2 (uri/uri uri2)
+        uri1-no-query-string (assoc uri1 :query nil)
+        uri2-no-query-string (assoc uri2 :query nil)
+        uri1-query-params (uri/query-map uri1)
+        uri2-query-params (uri/query-map uri2)]
+    (and
+      (= uri1-no-query-string uri2-no-query-string)
+      (= uri1-query-params uri2-query-params))))
 
 (defn equivalent-uris [uris1 uris2]
   (every? #(apply equivalent-uri %)

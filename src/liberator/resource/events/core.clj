@@ -2,10 +2,13 @@
   (:require
    [halboy.resource :as hal]
    [hype.core :as hype]
+   [liberator.core :as liberator]
    [liberator.mixin.core :as mixin]
    [liberator.mixin.json.core :as json-mixin]
    [liberator.mixin.hypermedia.core :as hypermedia-mixin]
-   [liberator.mixin.hal.core :as hal-mixin]))
+   [liberator.mixin.hal.core :as hal-mixin]
+   [liberator.mixin.validation.core :as validation-mixin]
+   [liberator.resource.events.spec]))
 
 (defprotocol EventLoader
   (query [loader context])
@@ -127,6 +130,14 @@
 
     :self-link                 default-self-link-fn
 
+    :allowed-methods           [:get]
+
+    :validator
+    (liberator/by-method
+      {:get (validation-mixin/spec-validator
+              :liberator.resource.events.requests.get/request
+              {:selector :request})})
+
     :handle-ok
     (fn [context]
       (let [event-loader
@@ -163,5 +174,6 @@
      (json-mixin/with-json-mixin dependencies)
      (hypermedia-mixin/with-hypermedia-mixin dependencies)
      (hal-mixin/with-hal-mixin dependencies)
+     (validation-mixin/with-validation-mixin dependencies)
      (definitions dependencies)
      overrides)))
