@@ -7,7 +7,8 @@
 
   :dependencies [[io.logicblocks/halboy "6.0.0"]
                  [io.logicblocks/hype "2.0.0"]
-                 [io.logicblocks/liberator.mixin "0.1.0-RC12"]]
+                 [io.logicblocks/liberator.mixin "0.1.0-RC13"]
+                 [io.logicblocks/spec.validate "0.2.0-RC19"]]
 
   :plugins [[lein-cloverage "1.2.4"]
             [lein-shell "0.5.0"]
@@ -25,6 +26,7 @@
   {:shared
    ^{:pom-scope :test}
    {:dependencies [[org.clojure/clojure "1.11.1"]
+                   [org.clojure/test.check "1.1.1"]
 
                    [hashp "0.2.2"]
 

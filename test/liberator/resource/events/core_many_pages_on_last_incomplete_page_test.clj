@@ -155,6 +155,7 @@
         (many-pages-of-events-on-last-incomplete-page-scenario
           {:base-url     "https://example.com"
            :query-params {:pick 20}})]
+    (behaviours/responds-with-status 200 options)
     (behaviours/includes-link-on-resource :self
       (str "https://example.com/events?pick=20&since=" since-event-id)
       options)
@@ -171,6 +172,7 @@
         (many-pages-of-events-on-last-incomplete-page-scenario
           {:base-url "https://example.com"
            :query-params {:sort "descending"}})]
+    (behaviours/responds-with-status 200 options)
     (behaviours/includes-link-on-resource :self
       (str "https://example.com/events?sort=descending&since=" since-event-id)
       options)
@@ -187,7 +189,8 @@
   (find-tests *ns*)
 
   (run-tests
-    [(ns-resolve *ns* 'does-not-include-next-link-on-resource)])
+    [(ns-resolve *ns*
+       'responds-with-status-200-when-pick-query-param-provided)])
 
   (run-tests
     (find-tests *ns*)

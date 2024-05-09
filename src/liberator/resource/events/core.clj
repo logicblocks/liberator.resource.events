@@ -17,11 +17,13 @@
 
 (defn- resource-attribute-as-value [{:keys [resource] :as context} attribute]
   (let [attribute-fn (attribute resource)]
-    (attribute-fn context)))
+    (when attribute-fn
+      (attribute-fn context))))
 
 (defn- resource-attribute-as-fn [{:keys [resource] :as context} attribute]
   (let [attribute-fn (attribute resource)]
-    (partial attribute-fn context)))
+    (when attribute-fn
+      (partial attribute-fn context))))
 
 (defn propagated-query-params [{:keys [request] :as context}]
   (let [allowed-query-params
@@ -126,17 +128,23 @@
     :event-link                default-event-link-fn
     :events-link               default-events-link-fn
 
-    :allowed-query-params      default-allowed-query-params
-
     :self-link                 default-self-link-fn
 
+    :allowed-query-params      default-allowed-query-params
     :allowed-methods           [:get]
 
     :validator
     (liberator/by-method
-      {:get (validation-mixin/spec-validator
-              :liberator.resource.events.requests.get/request
-              {:selector :request})})
+      {:get
+       (fn [context]
+         (let [spec
+               (or (resource-attribute-as-value context :validator-spec)
+                 :liberator.resource.events.requests.get/request)
+               options
+               (merge
+                 {:selector :request}
+                 (resource-attribute-as-value context :validator-options))]
+           (validation-mixin/spec-validator spec options)))})
 
     :handle-ok
     (fn [context]

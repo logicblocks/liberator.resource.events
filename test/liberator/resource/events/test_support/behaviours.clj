@@ -3,6 +3,7 @@
   (:require
    [clojure.test :refer [deftest is]]
    [clojure.string :as string]
+   [clojure.pprint :as pp]
 
    [halboy.resource :as hal]
    [halboy.json :as hal-json]
@@ -30,6 +31,9 @@
 
 (defn get-resource-href [response rel]
   (hal/get-href (->resource response) rel))
+
+(defn get-resource-properties [response]
+  (hal/properties (->resource response)))
 
 (defn get-embedded-resource [response key]
   (hal/get-resource (->resource response) key))
@@ -79,6 +83,7 @@
   (let [name (test-name "responds-with-status-" status-code)]
     `(deftest ~name
        (let [response# (fetch-events ~options)]
+         (prn response#)
          (is (= ~status-code (:status response#)))))))
 
 (defmacro includes-link-on-resource
@@ -96,6 +101,26 @@
        (let [response# (fetch-events ~options)]
          (is (nil? (get-resource-href response# ~rel)))))))
 
+(defmacro includes-properties-on-resource
+  [property-keys values options]
+  (let [name (test-name "includes-" (properties-description property-keys)
+               "-on-resource")]
+    `(deftest ~name
+       (let [response# (fetch-events ~options)
+             properties# (get-resource-properties response#)
+             satisfied?# (fn [k#]
+                           (let [expected# (k# ~values)
+                                 actual# (k# properties#)]
+                             (if (fn? expected#)
+                               (expected# actual#)
+                               (= actual# expected#))))
+             unsatisfied#
+             (filterv (comp not satisfied?#) ~property-keys)]
+         (is (every? satisfied?# ~property-keys)
+           (str "unsatisfied for keys: " (prn-str unsatisfied#)
+             "with values: "
+             (prn-str (select-keys properties# unsatisfied#))))))))
+
 (defmacro includes-embedded-resources-on-resource
   [embed-key count options]
   (let [name
@@ -105,6 +130,14 @@
        (let [response# (fetch-events ~options)]
          (is (= ~count
                (count (get-embedded-resource response# ~embed-key))))))))
+
+(defmacro does-not-include-embedded-resources-on-resource
+  [embed-key options]
+  (let [name
+        (test-name "does-not-embed-" (name embed-key) "-resources-on-resource")]
+    `(deftest ~name
+       (let [response# (fetch-events ~options)]
+         (is (nil? (get-embedded-resource response# ~embed-key)))))))
 
 (defmacro includes-links-on-embedded-resources
   [embed-key rel hrefs options]
