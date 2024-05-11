@@ -3,7 +3,6 @@
   (:require
    [clojure.test :refer [deftest is]]
    [clojure.string :as string]
-   [clojure.pprint :as pp]
 
    [halboy.resource :as hal]
    [halboy.json :as hal-json]

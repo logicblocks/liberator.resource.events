@@ -5,10 +5,11 @@
 
 (defn make-scenario
   ([{mandatory-query-params :query-params
-     default-page-size :page-size
-     :keys [preceding-events? subsequent-events?]
-     :or   {mandatory-query-params (fn [_] {})
-            default-page-size    events-resource/default-events-to-pick}}]
+     default-page-size      :page-size
+     :keys                  [preceding-events? subsequent-events?]
+     :or
+     {mandatory-query-params (fn [_] {})
+      default-page-size      events-resource/default-events-to-pick}}]
    (fn scenario-fn
      ([] (scenario-fn {}))
      ([{:keys [base-url router resource-definition query-params page-size]
@@ -31,9 +32,11 @@
 
             event-loader
             (events-resource/->event-loader
-              {:query   (constantly events)
-               :before? (constantly preceding-events?)
-               :after?  (constantly subsequent-events?)})
+              {:load-events
+               (fn [_]
+                 {:events  events
+                  :before? preceding-events?
+                  :after?  subsequent-events?})})
 
             query-params (merge query-params (mandatory-query-params data))
 

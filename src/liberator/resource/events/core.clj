@@ -3,7 +3,8 @@
    [halboy.resource :as hal]
    [hype.core :as hype]
    [liberator.core :as liberator]
-   [liberator.mixin.core :as mixin]
+   [liberator.mixin.core :as lm-core]
+   [liberator.mixin.util :as lm-util]
    [liberator.mixin.json.core :as json-mixin]
    [liberator.mixin.hypermedia.core :as hypermedia-mixin]
    [liberator.mixin.hal.core :as hal-mixin]
@@ -11,23 +12,11 @@
    [liberator.resource.events.spec]))
 
 (defprotocol EventLoader
-  (query [loader context])
-  (before? [loader context])
-  (after? [loader context]))
-
-(defn- resource-attribute-as-value [{:keys [resource] :as context} attribute]
-  (let [attribute-fn (attribute resource)]
-    (when attribute-fn
-      (attribute-fn context))))
-
-(defn- resource-attribute-as-fn [{:keys [resource] :as context} attribute]
-  (let [attribute-fn (attribute resource)]
-    (when attribute-fn
-      (partial attribute-fn context))))
+  (load-events [loader context]))
 
 (defn propagated-query-params [{:keys [request] :as context}]
   (let [allowed-query-params
-        (resource-attribute-as-value context :allowed-query-params)
+        (lm-util/resource-attribute-as-value context :allowed-query-params)
         allowed-query-params (map name allowed-query-params)
         request-query-params (:query-params request)]
     (select-keys request-query-params allowed-query-params)))
@@ -46,7 +35,7 @@
          query-params
          (excluding-query-params query-params
            (:query-param-exclusions options))
-         events-link-fn (resource-attribute-as-fn context :events-link)]
+         events-link-fn (lm-util/resource-attribute-as-fn context :events-link)]
      (events-link-fn
        (merge params
          {:query-params
@@ -75,12 +64,8 @@
 
 (defrecord FnBackedEventLoader [fns]
   EventLoader
-  (query [_ context]
-    ((:query fns) context))
-  (before? [_ context]
-    ((get fns :before? (constantly true)) context))
-  (after? [_ context]
-    ((get fns :after? (constantly true)) context)))
+  (load-events [_ context]
+    ((:load-events fns) context)))
 
 (defn ->event-loader [fns]
   (->FnBackedEventLoader fns))
@@ -98,11 +83,11 @@
 (def default-self-link-fn self-link)
 
 (defn default-event-loader [_]
-  (->event-loader {:query (fn [_] [])}))
+  (->event-loader {:load-events (fn [_] {:events []})}))
 
 (defn default-event-transformer
   [context event]
-  (let [event-link (resource-attribute-as-fn context :event-link)
+  (let [event-link (lm-util/resource-attribute-as-fn context :event-link)
         resource (hal/new-resource (event-link event {}))
         resource (hal/add-properties resource
                    (select-keys event
@@ -138,24 +123,25 @@
       {:get
        (fn [context]
          (let [spec
-               (or (resource-attribute-as-value context :validator-spec)
+               (or
+                 (lm-util/resource-attribute-as-value
+                   context :validator-spec)
                  :liberator.resource.events.requests.get/request)
                options
                (merge
                  {:selector :request}
-                 (resource-attribute-as-value context :validator-options))]
+                 (lm-util/resource-attribute-as-value
+                   context :validator-options))]
            (validation-mixin/spec-validator spec options)))})
 
     :handle-ok
     (fn [context]
       (let [event-loader
-            (resource-attribute-as-value context :event-loader)
+            (lm-util/resource-attribute-as-value context :event-loader)
             event-transformer
-            (resource-attribute-as-fn context :event-transformer)
+            (lm-util/resource-attribute-as-fn context :event-transformer)
 
-            events (query event-loader context)
-            before? (before? event-loader context)
-            after? (after? event-loader context)
+            {:keys [events before? after?]} (load-events event-loader context)
 
             event-resources (mapv event-transformer events)
             events-resource
@@ -178,7 +164,7 @@
   ([dependencies]
    (handler dependencies {}))
   ([dependencies overrides]
-   (mixin/build-resource
+   (lm-core/build-resource
      (json-mixin/with-json-mixin dependencies)
      (hypermedia-mixin/with-hypermedia-mixin dependencies)
      (hal-mixin/with-hal-mixin dependencies)
