@@ -86,12 +86,27 @@
          (is (= ~status-code (:status response#)))))))
 
 (defmacro includes-link-on-resource
-  [rel href options]
+  [rel href-or-hrefs options]
   (let [name (test-name "includes-" (name rel) "-link-on-resource")]
     `(deftest ~name
-       (let [response# (fetch-events ~options)]
-         (is (equivalent-uri ~href
-               (get-resource-href response# ~rel)))))))
+       (let [response# (fetch-events ~options)
+             actual# (get-resource-href response# ~rel)]
+         (cond
+           (and (sequential? ~href-or-hrefs) (empty? ~href-or-hrefs))
+           (is (= [] (and actual# (vec actual#))))
+
+           (sequential? ~href-or-hrefs)
+           (is (every?
+                 true?
+                 (map equivalent-uri ~href-or-hrefs actual#))
+             (str "not equivalent for links: "
+               (prn-str
+                 (filterv
+                   (fn [[e# a#]] (not (equivalent-uri e# a#)))
+                   (map vector ~href-or-hrefs actual#)))))
+
+           :else
+           (is (equivalent-uri ~href-or-hrefs actual#)))))))
 
 (defmacro does-not-include-link-on-resource
   [rel options]

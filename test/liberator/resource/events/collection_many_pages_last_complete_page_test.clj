@@ -1,4 +1,4 @@
-(ns liberator.resource.events.core-exactly-one-page-test
+(ns liberator.resource.events.collection-many-pages-last-complete-page-test
   (:require
    [halboy.resource :as hal]
 
@@ -10,36 +10,49 @@
    [liberator.resource.events.test-support.behaviours :as behaviours]
    [liberator.resource.events.test-support.scenarios :as scenarios]))
 
-(def exactly-one-page-of-events-scenario
+(def many-pages-of-events-on-last-complete-page-scenario
   (scenarios/make-scenario
-    {:preceding-events?  false
-     :subsequent-events? false}))
+    {:preceding-events?  true
+     :subsequent-events? false
+     :query-params
+     (fn [{:keys [since-event-id]}]
+       {:since since-event-id})}))
 
-(let [{:keys [options]}
-      (exactly-one-page-of-events-scenario
-        {:base-url "https://example.com"})]
+(let [{:keys [events options]}
+      (many-pages-of-events-on-last-complete-page-scenario
+        {:page-size 10
+         :base-url  "https://example.com"
+         :router   [""
+                    [["/" :discovery]
+                     ["/events" :events]
+                     [["/events/" :event-id] :event]]]})
+      hrefs (mapv #(str "https://example.com/events/" (:id %)) events)]
   (behaviours/responds-with-status 200 options)
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
     options)
-  (behaviours/does-not-include-link-on-resource :next options)
-  (behaviours/does-not-include-link-on-resource :previous options)
+  (behaviours/includes-link-on-resource :events hrefs options)
+  (behaviours/does-not-include-link-on-resource :next
+    options)
   (behaviours/includes-embedded-resources-on-resource :events 10 options))
 
 (behaviours/when no-events-link-fn-provided
-  (let [{:keys [options]}
-        (exactly-one-page-of-events-scenario
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-complete-page-scenario
           {:base-url "https://example.com"})]
     (behaviours/includes-link-on-resource :self
-      "https://example.com/events"
+      (str "https://example.com/events?since=" since-event-id)
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/events"
+      options)
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when events-link-fn-provided
-  (let [{:keys [options]}
-        (exactly-one-page-of-events-scenario
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-complete-page-scenario
           {:base-url "https://example.com/api"
            :router   [""
                       [["/api"
@@ -51,24 +64,32 @@
             (fn [{:keys [request router]} params]
               (hype/absolute-url-for request router :api-events params))}})]
     (behaviours/includes-link-on-resource :self
-      "https://example.com/api/events"
+      (str "https://example.com/api/events?since=" since-event-id)
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/api/events"
+      options)
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/api/events?preceding=" first-event-id)
       options)))
 
 (behaviours/when no-event-link-fn-provided
   (let [{:keys [events options]}
-        (exactly-one-page-of-events-scenario
-          {:base-url "https://example.com"})
+        (many-pages-of-events-on-last-complete-page-scenario
+          {:base-url "https://example.com"
+           :router   [""
+                      [["/" :discovery]
+                       ["/events" :events]
+                       [["/events/" :event-id] :event]]]})
         hrefs (map #(str "https://example.com/events/" (:id %)) events)]
+    (behaviours/includes-link-on-resource :events hrefs options)
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)))
 
 (behaviours/when event-link-fn-provided
   (let [{:keys [events options]}
-        (exactly-one-page-of-events-scenario
+        (many-pages-of-events-on-last-complete-page-scenario
           {:base-url "https://example.com/api"
            :router   [""
                       [["/api"
@@ -82,13 +103,14 @@
                 (merge params
                   {:path-params {:api-event-id (:id event)}})))}})
         hrefs (map #(str "https://example.com/api/events/" (:id %)) events)]
+    (behaviours/includes-link-on-resource :events hrefs options)
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)))
 
 (behaviours/when no-event-transformer-fn-provided
   (let [{:keys [events options]}
-        (exactly-one-page-of-events-scenario)
+        (many-pages-of-events-on-last-complete-page-scenario)
         event-properties
         (map (fn [event]
                {:id         (:id event)
@@ -109,7 +131,7 @@
 
 (behaviours/when event-transformer-fn-provided
   (let [{:keys [events options]}
-        (exactly-one-page-of-events-scenario
+        (many-pages-of-events-on-last-complete-page-scenario
           {:base-url "https://example.com"
            :resource-definition
            {:event-transformer
@@ -140,33 +162,38 @@
       options)))
 
 (behaviours/when pick-query-param-provided
-  (let [{:keys [options]}
-        (exactly-one-page-of-events-scenario
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-complete-page-scenario
           {:page-size    20
            :base-url     "https://example.com"
            :query-params {:pick 20}})]
     (behaviours/includes-link-on-resource :self
-      "https://example.com/events?pick=20"
+      (str "https://example.com/events?pick=20&since=" since-event-id)
       options)
     (behaviours/includes-link-on-resource :first
       "https://example.com/events?pick=20"
       options)
     (behaviours/does-not-include-link-on-resource :next options)
-    (behaviours/does-not-include-link-on-resource :previous options)))
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?pick=20&preceding=" first-event-id)
+      options)))
 
 (behaviours/when sort-query-param-provided
-  (let [{:keys [options]}
-        (exactly-one-page-of-events-scenario
+  (let [{:keys [since-event-id first-event-id options]}
+        (many-pages-of-events-on-last-complete-page-scenario
           {:base-url     "https://example.com"
-           :query-params {:sort "asc"}})]
+           :query-params {:sort "descending"}})]
     (behaviours/includes-link-on-resource :self
-      "https://example.com/events?sort=asc"
+      (str "https://example.com/events?sort=descending&since=" since-event-id)
       options)
     (behaviours/includes-link-on-resource :first
-      "https://example.com/events?sort=asc"
+      "https://example.com/events?sort=descending"
       options)
     (behaviours/does-not-include-link-on-resource :next options)
-    (behaviours/does-not-include-link-on-resource :previous options)))
+    (behaviours/includes-link-on-resource :previous
+      (str "https://example.com/events?sort=descending&preceding="
+        first-event-id)
+      options)))
 
 (comment
   (find-tests *ns*)

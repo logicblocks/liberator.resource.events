@@ -1,4 +1,4 @@
-(ns liberator.resource.events.core-many-pages-on-last-incomplete-page-test
+(ns liberator.resource.events.collection-many-pages-last-incomplete-page-test
   (:require
    [halboy.resource :as hal]
 
@@ -19,14 +19,20 @@
      (fn [{:keys [since-event-id]}]
        {:since since-event-id})}))
 
-(let [{:keys [options]}
+(let [{:keys [events options]}
       (many-pages-of-events-on-last-incomplete-page-scenario
         {:page-size 5
-         :base-url "https://example.com"})]
+         :base-url "https://example.com"
+         :router   [""
+                    [["/" :discovery]
+                     ["/events" :events]
+                     [["/events/" :event-id] :event]]]})
+      hrefs (mapv #(str "https://example.com/events/" (:id %)) events)]
   (behaviours/responds-with-status 200 options)
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
     options)
+  (behaviours/includes-link-on-resource :events hrefs options)
   (behaviours/does-not-include-link-on-resource :next
     options)
   (behaviours/includes-embedded-resources-on-resource :events 5 options))
@@ -71,8 +77,13 @@
 (behaviours/when no-event-link-fn-provided
   (let [{:keys [events options]}
         (many-pages-of-events-on-last-incomplete-page-scenario
-          {:base-url "https://example.com"})
+          {:base-url "https://example.com"
+           :router   [""
+                      [["/" :discovery]
+                       ["/events" :events]
+                       [["/events/" :event-id] :event]]]})
         hrefs (map #(str "https://example.com/events/" (:id %)) events)]
+    (behaviours/includes-link-on-resource :events hrefs options)
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)))
@@ -93,6 +104,7 @@
                 (merge params
                   {:path-params {:api-event-id (:id event)}})))}})
         hrefs (map #(str "https://example.com/api/events/" (:id %)) events)]
+    (behaviours/includes-link-on-resource :events hrefs options)
     (behaviours/includes-links-on-embedded-resources :events :self
       hrefs
       options)))

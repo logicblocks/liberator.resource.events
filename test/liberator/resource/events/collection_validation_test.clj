@@ -1,4 +1,4 @@
-(ns liberator.resource.events.core-validation-test
+(ns liberator.resource.events.collection-validation-test
   (:require
    [clojure.spec.alpha :as spec]
    [eftest.runner :refer [find-tests run-tests]]
@@ -202,7 +202,7 @@
   #{"ASC" "DESC"})
 
 (sd/extend-pred-with-requirement
-  'liberator.resource.events.core-validation-test/sort-order-string?
+  'liberator.resource.events.collection-validation-test/sort-order-string?
   :must-be-ASC-or-DESC)
 
 (spec/def ::sort sort-order-string?)

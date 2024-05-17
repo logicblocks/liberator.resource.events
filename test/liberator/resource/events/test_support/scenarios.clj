@@ -1,6 +1,6 @@
 (ns liberator.resource.events.test-support.scenarios
   (:require
-   [liberator.resource.events.core :as events-resource]
+   [liberator.resource.events.collection :as events-resource]
    [liberator.resource.events.test-support.data :as data]))
 
 (defn make-scenario

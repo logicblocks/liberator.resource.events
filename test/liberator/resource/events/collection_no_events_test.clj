@@ -1,5 +1,7 @@
-(ns liberator.resource.events.core-no-events-test
+(ns liberator.resource.events.collection-no-events-test
   (:require
+   [halboy.resource :as hal]
+   [halboy.json :as hal-json]
    [hype.core :as hype]
 
    [eftest.runner :refer [find-tests run-tests]]
@@ -21,6 +23,7 @@
   (behaviours/includes-link-on-resource :discovery
     "https://example.com/"
     options)
+  (behaviours/includes-link-on-resource :events [] options)
   (behaviours/does-not-include-link-on-resource :next options)
   (behaviours/does-not-include-link-on-resource :previous options)
   (behaviours/includes-embedded-resources-on-resource :events 0 options))

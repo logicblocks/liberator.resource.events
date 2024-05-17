@@ -43,11 +43,10 @@
     :injections [(require 'hashp.core)]}
 
    :dev
-   [:shared {:source-paths ["dev"]
-             :eftest       {:multithread? false}}]
+   [:shared {:source-paths ["dev"]}]
 
    :test
-   [:shared {:eftest {:multithread? false}}]
+   [:shared]
 
    :prerelease
    {:release-tasks

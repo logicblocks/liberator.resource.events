@@ -3,7 +3,7 @@
    [ring.middleware.keyword-params :as ring-keyword-params]
    [ring.middleware.params :as ring-params]
 
-   [liberator.resource.events.core :as events-resource]))
+   [liberator.resource.events.collection :as events-resource]))
 
 (def default-router
   [""

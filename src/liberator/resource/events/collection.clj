@@ -1,4 +1,4 @@
-(ns liberator.resource.events.core
+(ns liberator.resource.events.collection
   (:require
    [halboy.resource :as hal]
    [hype.core :as hype]
@@ -61,6 +61,15 @@
     (events-link context
       {:query-params {:preceding first-event-id}}
       {:query-param-exclusions #{:since}})))
+
+(defn- event-links [context events]
+  (let [event-link (lm-util/resource-attribute-as-fn context :event-link)]
+    (mapv
+      (fn [event]
+        (let [link (event-link event {})
+              link (if (string? link) {:href link} link)]
+          link))
+      events)))
 
 (defrecord FnBackedEventLoader [fns]
   EventLoader
@@ -147,6 +156,7 @@
             events-resource
             (-> (hal/new-resource (self-link context))
               (hal/add-href :first (first-link context))
+              (hal/add-href :events (event-links context events))
               (hal/add-resource :events event-resources))
             events-resource
             (if after?
