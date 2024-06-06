@@ -7,7 +7,7 @@
 
   :dependencies [[io.logicblocks/halboy "6.0.0"]
                  [io.logicblocks/hype "2.0.0"]
-                 [io.logicblocks/liberator.mixin "0.1.0-RC14"]
+                 [io.logicblocks/liberator.mixin "0.1.0-RC18"]
                  [io.logicblocks/spec.validate "0.2.0-RC19"]]
 
   :plugins [[lein-cloverage "1.2.4"]
